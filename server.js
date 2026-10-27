@@ -185,8 +185,8 @@ function updateWorm(w, dt){
     const targetX = prev.x + (dx/dist) * gap;
     const targetY = prev.y + (dy/dist) * gap;
     // Плавное подтягивание — «резиновая» плавность
-    cur.x += (targetX - cur.x) * 0.55;
-    cur.y += (targetY - cur.y) * 0.55;
+    cur.x += (targetX - cur.x) * 0.8;
+    cur.y += (targetY - cur.y) * 0.8;
   }
 }
 
