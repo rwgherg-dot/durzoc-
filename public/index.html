@@ -395,19 +395,39 @@
     ctx.lineWidth = radius*0.7;
     tracePath(path); ctx.stroke();
 
+        // Голова = path[0]. Направление берём от path[1] к path[0] — реальное направление тела
     var hx = path[0].x, hy = path[0].y;
-    var angle = isMe ? targetAngle : (w.angle || 0);
-    var dirX = Math.cos(angle), dirY = Math.sin(angle);
+    var dirX, dirY;
+    if (path.length >= 2){
+      var dxh = path[0].x - path[1].x;
+      var dyh = path[0].y - path[1].y;
+      var lenh = Math.sqrt(dxh*dxh + dyh*dyh);
+      if (lenh > 0.5){
+        dirX = dxh/lenh; dirY = dyh/lenh;
+      } else {
+        var angle = isMe ? targetAngle : (w.angle || 0);
+        dirX = Math.cos(angle); dirY = Math.sin(angle);
+      }
+    } else {
+      var angle2 = isMe ? targetAngle : (w.angle || 0);
+      dirX = Math.cos(angle2); dirY = Math.sin(angle2);
+    }
     var perpX = -dirY, perpY = dirX;
-    var eo = radius*0.5, fw = radius*0.4;
-    var e1x = hx+perpX*eo+dirX*fw, e1y = hy+perpY*eo+dirY*fw;
-    var e2x = hx-perpX*eo+dirX*fw, e2y = hy-perpY*eo+dirY*fw;
+    // Глаза ВНУТРИ головы — ближе к центру, не выходят за радиус
+    var eo = radius * 0.42;
+    var fw = radius * 0.18;
+    var eyeR = radius * 0.30;
+    var pupilR = radius * 0.15;
+    var e1x = hx + perpX*eo + dirX*fw;
+    var e1y = hy + perpY*eo + dirY*fw;
+    var e2x = hx - perpX*eo + dirX*fw;
+    var e2y = hy - perpY*eo + dirY*fw;
     ctx.fillStyle = "#fff";
-    ctx.beginPath(); ctx.arc(e1x,e1y,radius*0.32,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(e2x,e2y,radius*0.32,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(e1x, e1y, eyeR, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(e2x, e2y, eyeR, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = "#0a0c1a";
-    ctx.beginPath(); ctx.arc(e1x+dirX*2,e1y+dirY*2,radius*0.16,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(e2x+dirX*2,e2y+dirY*2,radius*0.16,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(e1x + dirX*eyeR*0.5, e1y + dirY*eyeR*0.5, pupilR, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(e2x + dirX*eyeR*0.5, e2y + dirY*eyeR*0.5, pupilR, 0, Math.PI*2); ctx.fill();
   }
 
   function drawWorld(nowSec){
