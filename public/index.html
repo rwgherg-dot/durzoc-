@@ -9,12 +9,24 @@
   html,body{height:100%;overflow:hidden;background:#05060f;font-family:Arial,sans-serif;color:#fff;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
   #wrap{position:fixed;inset:0}
   canvas{display:block;touch-action:none}
-  #hud{position:fixed;top:0;left:0;right:0;padding:12px 16px;display:flex;justify-content:space-between;pointer-events:none;z-index:5;font-size:14px;font-variant-numeric:tabular-nums;gap:8px;flex-wrap:wrap}
-  .panel{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:8px 14px}
+  #leftHud{position:fixed;top:12px;left:12px;z-index:5;display:flex;flex-direction:column;gap:8px;pointer-events:none;width:220px}
+  .panel{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:8px 12px}
   .label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#6a7a9a;margin-bottom:2px}
-  .value{font-size:20px;font-weight:800;line-height:1;color:#7CFFB2}
+  .value{font-size:18px;font-weight:800;line-height:1;color:#7CFFB2}
+  #scorePanel{display:flex;justify-content:space-between;gap:8px}
+  #scorePanel .col{flex:1}
+  #mapPanel{padding:6px}
+  #mapCanvas{display:block;width:100%;height:auto;border-radius:10px;background:#0a0c1a}
+  #leaderPanel{padding:8px 12px;max-height:240px;overflow:hidden}
+  #leaderTitle{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#6a7a9a;margin-bottom:6px}
+  #leaderList{font-size:12px;line-height:1.5}
+  #leaderList .row{display:flex;justify-content:space-between;gap:6px;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+  #leaderList .nm{color:#cfd8e6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #leaderList .sc{color:#ffd93d;font-weight:800}
   #boostBar{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);width:220px;height:10px;background:rgba(255,255,255,.1);border-radius:10px;overflow:hidden;z-index:5}
   #boostFill{height:100%;width:100%;background:linear-gradient(90deg,#7CFFB2,#4ecca3);transition:width .1s}
+  #boostBtn{position:fixed;right:24px;bottom:24px;width:80px;height:80px;border-radius:50%;background:rgba(124,255,178,.15);border:2px solid #7CFFB2;color:#7CFFB2;font-size:13px;font-weight:800;display:none;align-items:center;justify-content:center;z-index:5;user-select:none}
+  @media (max-width:600px){#boostBtn{display:flex}#leftHud{width:160px}#leaderPanel{max-height:160px}}
   #overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;z-index:10;background:rgba(5,6,15,.96);opacity:0;pointer-events:none;transition:opacity .4s;overflow-y:auto}
   #overlay.show{opacity:1;pointer-events:auto}
   .ov-card{max-width:480px;width:100%}
@@ -25,15 +37,13 @@
   .btn:active{transform:scale(.96)}
   .btn.ghost{background:transparent;color:#7CFFB2;border:2px solid #4ecca3;box-shadow:none}
   .btn:disabled{opacity:.4;cursor:not-allowed}
-  .input{width:100%;font-family:inherit;font-size:20px;font-weight:800;text-align:center;background:rgba(255,255,255,.06);border:2px solid rgba(124,255,178,.3);border-radius:14px;padding:14px;color:#fff;margin-bottom:12px;outline:none}
+  .input{width:100%;font-family:inherit;font-size:18px;font-weight:700;text-align:center;background:rgba(255,255,255,.06);border:2px solid rgba(124,255,178,.3);border-radius:14px;padding:14px;color:#fff;margin-bottom:10px;outline:none}
   .input:focus{border-color:#7CFFB2}
   .row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
   .code-big{font-size:38px;font-weight:900;letter-spacing:6px;color:#7CFFB2;background:rgba(124,255,178,.08);border:2px dashed rgba(124,255,178,.4);border-radius:16px;padding:16px;margin:12px 0;cursor:pointer}
   .status{font-size:13px;color:#8892aa;margin-top:10px;min-height:18px;line-height:1.4}
   .status.err{color:#ff6b6b}
   .ov-hint{font-size:11px;color:#4a5570;margin-top:16px;line-height:1.5}
-  #boostBtn{position:fixed;right:24px;bottom:24px;width:80px;height:80px;border-radius:50%;background:rgba(124,255,178,.15);border:2px solid #7CFFB2;color:#7CFFB2;font-size:13px;font-weight:800;display:none;align-items:center;justify-content:center;z-index:5;user-select:none}
-  @media (max-width:600px){#boostBtn{display:flex}.ov-title{font-size:22px}}
   .profile-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding:12px 16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px}
   .coins{font-size:18px;font-weight:800;color:#ffd93d}
   .admin-badge{display:inline-block;font-size:11px;font-weight:800;letter-spacing:1px;color:#0a0c1a;background:#ffd93d;padding:3px 8px;border-radius:100px;margin-left:6px}
@@ -54,14 +64,28 @@
   .case-card .cn{font-size:11px;font-weight:800;margin-bottom:4px}
   .case-card .cp{font-size:13px;color:#ffd93d;font-weight:800}
   .case-result{font-size:15px;line-height:1.5;margin:12px 0;padding:16px;border-radius:14px;background:rgba(124,255,178,.08);border:1px solid rgba(124,255,178,.3)}
+  .checkbox-row{display:flex;align-items:center;justify-content:center;gap:8px;margin:8px 0 14px;font-size:13px;color:#8892aa}
+  .checkbox-row input{width:18px;height:18px;accent-color:#4ecca3}
 </style>
 </head>
 <body>
 <div id="wrap"><canvas id="game"></canvas></div>
-<div id="hud">
-  <div class="panel"><div class="label">Счёт</div><div class="value" id="scoreVal">0</div></div>
-  <div class="panel"><div class="label">Убийства</div><div class="value" id="killsVal">0</div></div>
+
+<div id="leftHud">
+  <div class="panel" id="scorePanel">
+    <div class="col"><div class="label">Счёт</div><div class="value" id="scoreVal">0</div></div>
+    <div class="col"><div class="label">Убийства</div><div class="value" id="killsVal">0</div></div>
+  </div>
+  <div class="panel" id="mapPanel">
+    <div class="label">Карта</div>
+    <canvas id="mapCanvas" width="200" height="200"></canvas>
+  </div>
+  <div class="panel" id="leaderPanel">
+    <div id="leaderTitle">Игроки</div>
+    <div id="leaderList"></div>
+  </div>
 </div>
+
 <div id="boostBar"><div id="boostFill"></div></div>
 <div id="boostBtn">BOOST</div>
 <div id="overlay" class="show"><div class="ov-card" id="ovCard"></div></div>
@@ -72,8 +96,11 @@
 
   var canvas = document.getElementById("game");
   var ctx = canvas.getContext("2d");
+  var mapCanvas = document.getElementById("mapCanvas");
+  var mapCtx = mapCanvas.getContext("2d");
   var scoreVal = document.getElementById("scoreVal");
   var killsVal = document.getElementById("killsVal");
+  var leaderList = document.getElementById("leaderList");
   var boostFill = document.getElementById("boostFill");
   var boostBtn = document.getElementById("boostBtn");
   var overlay = document.getElementById("overlay");
@@ -89,13 +116,11 @@
   var others = [];
   var foods = [];
   var roomCode = "";
-  var connected = false;
   var myName = "";
   var targetAngle = 0;
   var boosting = false;
   var pointerX = 0, pointerY = 0, pointerActive = false;
   var dead = false;
-
   var profile = null;
 
   function resize(){
@@ -143,46 +168,65 @@
     var proto = location.protocol === "https:" ? "wss:" : "ws:";
     ws = new WebSocket(proto + "//" + location.host);
     ws.onopen = function(){
-      if (myName) ws.send(JSON.stringify({ t: "profile", name: myName }));
+      var remembered = null;
+      try { remembered = localStorage.getItem("worms_saved_name"); } catch(e){}
+      if (remembered) {
+        ws.send(JSON.stringify({ t: "profile", name: remembered }));
+      }
     };
     ws.onmessage = onMessage;
     ws.onerror = function(){};
-    ws.onclose = function(){
-      connected = false;
-      setTimeout(wsConnect, 2000);
-    };
+    ws.onclose = function(){ setTimeout(wsConnect, 2000); };
   }
 
   function onMessage(ev){
     var msg;
     try{ msg = JSON.parse(ev.data); }catch(e){ return; }
+    if (msg.t === "authOk"){
+      myName = msg.name;
+      return;
+    }
+    if (msg.t === "authError"){
+      setStatus(msg.message || "Ошибка", true);
+      return;
+    }
     if (msg.t === "profile"){
       profile = msg;
+      myName = msg.name;
       showProfileUI();
-    } else if (msg.t === "caseResult"){
-      if (msg.error){
-        showCaseResult("Недостаточно монет", null);
-      } else {
-        if (profile){
-          profile.coins = msg.coins;
-          profile.skins = msg.skins;
-        }
+      return;
+    }
+    if (msg.t === "leaderboard"){
+      renderLeaderboard(msg.list || []);
+      return;
+    }
+    if (msg.t === "caseResult"){
+      if (msg.error){ showCaseResult(msg.error, null); }
+      else {
+        if (profile){ profile.coins = msg.coins; profile.skins = msg.skins; }
         showCaseResult(null, msg);
       }
-    } else if (msg.t === "skinSet"){
+      return;
+    }
+    if (msg.t === "skinSet"){
       if (profile) profile.activeSkin = msg.activeSkin;
-      showSkinsUI();
-    } else if (msg.t === "joined"){
-      myId = msg.id;
-      connected = true;
-      WORLD_W = msg.world.w; WORLD_H = msg.world.h;
-      overlay.className = "";
-      dead = false;
-    } else if (msg.t === "respawned"){
-      myId = msg.id;
-      dead = false;
-      overlay.className = "";
-    } else if (msg.t === "state"){
+      showProfileUI();
+      return;
+    }
+    if (msg.t === "joined"){
+      myId = msg.id; WORLD_W = msg.world.w; WORLD_H = msg.world.h;
+      overlay.className = ""; dead = false;
+      return;
+    }
+    if (msg.t === "respawned"){
+      myId = msg.id; dead = false; overlay.className = "";
+      return;
+    }
+    if (msg.t === "error"){
+      setStatus(msg.message || "Ошибка", true);
+      return;
+    }
+    if (msg.t === "state"){
       myWorm = msg.me;
       others = msg.worms || [];
       if (msg.food) foods = msg.food;
@@ -202,6 +246,16 @@
   function sendInput(){
     if (!ws || ws.readyState !== WebSocket.OPEN || !myWorm || !myWorm.alive) return;
     ws.send(JSON.stringify({ t: "input", angle: targetAngle, boost: boosting }));
+  }
+
+  function renderLeaderboard(list){
+    var html = "";
+    for (var i=0;i<list.length;i++){
+      var p = list[i];
+      var admin = p.isAdmin ? ' <span style="color:#ffd93d;font-size:9px">ADMIN</span>' : '';
+      html += '<div class="row"><span class="nm">'+(i+1)+'. '+p.name+admin+'</span><span class="sc">'+p.kills+'</span></div>';
+    }
+    leaderList.innerHTML = html || '<div style="color:#4a5570;font-size:11px">Пока никого</div>';
   }
 
   function drawWorld(now){
@@ -309,75 +363,94 @@
   }
 
   function drawMinimap(){
-    var mmW = 140, mmH = 140;
-    var mmX = viewW - mmW - 16;
-    var mmY = viewH - mmH - 16;
-    var pad = 6;
-    ctx.fillStyle = "rgba(5,6,15,0.75)";
-    ctx.strokeStyle = "rgba(124,255,178,0.4)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(mmX, mmY, mmW, mmH, 12);
-    else ctx.rect(mmX, mmY, mmW, mmH);
-    ctx.fill(); ctx.stroke();
-    var innerW = mmW - pad*2, innerH = mmH - pad*2;
-    var sx = innerW / WORLD_W, sy = innerH / WORLD_H;
+    var mw = mapCanvas.width, mh = mapCanvas.height;
+    mapCtx.clearRect(0,0,mw,mh);
+    mapCtx.fillStyle = "#0a0c1a";
+    mapCtx.fillRect(0,0,mw,mh);
+    mapCtx.strokeStyle = "rgba(124,255,178,0.2)";
+    mapCtx.lineWidth = 1;
+    mapCtx.strokeRect(0.5,0.5,mw-1,mh-1);
+    var sx = mw / WORLD_W, sy = mh / WORLD_H;
     for (var i=0;i<others.length;i++){
       var w = others[i];
       if (!w.alive) continue;
-      ctx.fillStyle = w.color || "#ff9f1c";
-      ctx.beginPath();
-      ctx.arc(mmX + pad + w.x*sx, mmY + pad + w.y*sy, 3, 0, Math.PI*2);
-      ctx.fill();
+      mapCtx.fillStyle = w.color || "#ff9f1c";
+      mapCtx.beginPath();
+      mapCtx.arc(w.x*sx, w.y*sy, 3, 0, Math.PI*2);
+      mapCtx.fill();
     }
     if (myWorm && myWorm.alive){
-      var mx = mmX + pad + myWorm.x*sx;
-      var my = mmY + pad + myWorm.y*sy;
-      ctx.fillStyle = "#fff";
-      ctx.shadowColor = "#fff";
-      ctx.shadowBlur = 8;
-      ctx.beginPath(); ctx.arc(mx, my, 4, 0, Math.PI*2); ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(mx, my);
-      ctx.lineTo(mx + Math.cos(myWorm.angle)*8, my + Math.sin(myWorm.angle)*8);
-      ctx.stroke();
+      mapCtx.fillStyle = "#fff";
+      mapCtx.beginPath();
+      mapCtx.arc(myWorm.x*sx, myWorm.y*sy, 4, 0, Math.PI*2);
+      mapCtx.fill();
     }
-    ctx.fillStyle = "rgba(255,255,255,0.5)";
-    ctx.font = "10px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText("КАРТА", mmX + mmW/2, mmY - 6);
+  }
+
+  // === Экраны ===
+  function showIntroUI(){
+    overlay.className = "show";
+    ovCard.innerHTML =
+      '<div class="ov-title">Worms Online</div>' +
+      '<div class="ov-sub">Собирай еду, ускоряйся, убивай других. Чем больше ешь - тем длиннее и шире.</div>' +
+      '<div class="row" style="margin-bottom:8px">' +
+        '<button class="btn" id="btnLogin">Войти</button>' +
+        '<button class="btn ghost" id="btnRegister">Регистрация</button>' +
+      '</div>' +
+      '<div class="ov-hint">Мышь или палец - поворот. Пробел - ускорение.</div>';
+    document.getElementById("btnLogin").onclick = showLoginUI;
+    document.getElementById("btnRegister").onclick = showRegisterUI;
   }
 
   function showLoginUI(){
     overlay.className = "show";
     ovCard.innerHTML =
-      '<div class="ov-title">Worms Online</div>' +
-      '<div class="ov-sub">Введите имя. Для админа: admin worms</div>' +
-      '<input class="input" id="nameInput" maxlength="16" placeholder="ИМЯ">' +
-      '<button class="btn" id="btnEnter">Войти</button>' +
+      '<div class="ov-title">Вход</div>' +
+      '<input class="input" id="loginName" maxlength="16" placeholder="ИМЯ">' +
+      '<input class="input" id="loginPass" type="password" maxlength="40" placeholder="ПАРОЛЬ">' +
+      '<div class="checkbox-row"><input type="checkbox" id="rememberMe"><label for="rememberMe">Запомнить меня</label></div>' +
+      '<div class="row"><button class="btn" id="btnDoLogin">Войти</button><button class="btn ghost" id="btnBack">Назад</button></div>' +
       '<div class="status" id="statusText"></div>';
-    var ni = document.getElementById("nameInput");
-    try{ ni.value = localStorage.getItem("worms_name") || ""; }catch(e){}
-    ni.focus();
-    ni.addEventListener("keydown", function(e){ if (e.key === "Enter") enter(); });
-    document.getElementById("btnEnter").onclick = enter;
-    function enter(){
-      var n = (ni.value || "").trim().slice(0,16);
-      if (!n){ setStatus("Введите имя", true); return; }
-      myName = n;
-      try{ localStorage.setItem("worms_name", n); }catch(e){}
-      if (!ws || ws.readyState !== 1){
-        wsConnect();
-        setTimeout(function(){
-          if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "profile", name: myName }));
-        }, 800);
-      } else {
-        ws.send(JSON.stringify({ t: "profile", name: myName }));
+    document.getElementById("btnBack").onclick = showIntroUI;
+    var nm = document.getElementById("loginName");
+    var ps = document.getElementById("loginPass");
+    var rm = document.getElementById("rememberMe");
+    try{
+      var saved = localStorage.getItem("worms_saved_name");
+      if (saved){ nm.value = saved; rm.checked = true; }
+    }catch(e){}
+    document.getElementById("btnDoLogin").onclick = function(){
+      var n = (nm.value||"").trim();
+      var p = ps.value || "";
+      if (!n || !p){ setStatus("Введите имя и пароль", true); return; }
+      try{
+        if (rm.checked) localStorage.setItem("worms_saved_name", n);
+        else localStorage.removeItem("worms_saved_name");
+      }catch(e){}
+      if (ws && ws.readyState === 1){
+        ws.send(JSON.stringify({ t: "login", name: n, password: p }));
       }
-    }
+    };
+  }
+
+  function showRegisterUI(){
+    overlay.className = "show";
+    ovCard.innerHTML =
+      '<div class="ov-title">Регистрация</div>' +
+      '<input class="input" id="regName" maxlength="16" placeholder="ИМЯ">' +
+      '<input class="input" id="regPass" type="password" maxlength="40" placeholder="ПАРОЛЬ (от 4 символов)">' +
+      '<div class="row"><button class="btn" id="btnDoReg">Создать</button><button class="btn ghost" id="btnBack">Назад</button></div>' +
+      '<div class="status" id="statusText"></div>' +
+      '<div class="ov-hint">Стартовый баланс: 500 монет и скин "Классик".</div>';
+    document.getElementById("btnBack").onclick = showIntroUI;
+    document.getElementById("btnDoReg").onclick = function(){
+      var n = (document.getElementById("regName").value||"").trim();
+      var p = document.getElementById("regPass").value || "";
+      if (!n || !p){ setStatus("Введите имя и пароль", true); return; }
+      if (ws && ws.readyState === 1){
+        ws.send(JSON.stringify({ t: "register", name: n, password: p }));
+      }
+    };
   }
 
   function showProfileUI(){
@@ -390,9 +463,8 @@
       var sk = skinMap[profile.skins[j]];
       if (!sk) continue;
       var active = sk.id === profile.activeSkin ? " active" : "";
-      var rCls = "r-" + sk.rarity;
       cells += '<div class="skin-cell owned'+active+'" data-skin="'+sk.id+'">' +
-        '<span class="skin-rarity '+rCls+'">'+sk.rarity+'</span>' +
+        '<span class="skin-rarity r-'+sk.rarity+'">'+sk.rarity+'</span>' +
         '<div class="skin-dot" style="background:'+sk.color+'"></div>' +
         '<div class="skin-name">'+sk.name+'</div>' +
         '</div>';
@@ -408,12 +480,18 @@
       '<div class="row" style="margin-bottom:12px">' +
         '<button class="btn" id="btnPlay">Играть</button>' +
         '<button class="btn ghost" id="btnCases">Кейсы</button>' +
+        '<button class="btn ghost" id="btnLogout">Выйти</button>' +
       '</div>' +
       '<div style="font-size:13px;color:#8892aa;text-align:left;margin-bottom:6px">Мои скины:</div>' +
       '<div class="skin-grid">'+cells+'</div>' +
       '<div class="status" id="statusText"></div>';
     document.getElementById("btnPlay").onclick = showPlayUI;
     document.getElementById("btnCases").onclick = showCasesUI;
+    document.getElementById("btnLogout").onclick = function(){
+      try{ localStorage.removeItem("worms_saved_name"); }catch(e){}
+      profile = null; myName = "";
+      showIntroUI();
+    };
     var cellsEl = ovCard.querySelectorAll(".skin-cell");
     for (var c=0;c<cellsEl.length;c++){
       cellsEl[c].onclick = function(){
@@ -469,8 +547,6 @@
     if (coinEl) coinEl.textContent = profile.coins;
   }
 
-  function showSkinsUI(){ showProfileUI(); }
-
   function showPlayUI(){
     overlay.className = "show";
     ovCard.innerHTML =
@@ -480,9 +556,8 @@
         '<button class="btn" id="btnHost">Создать комнату</button>' +
         '<button class="btn ghost" id="btnJoin">Войти по коду</button>' +
       '</div>' +
-      '<button class="btn ghost" id="btnBack">Назад в профиль</button>' +
-      '<div class="status" id="statusText"></div>' +
-      '<div class="ov-hint">Мышь или палец - поворот к курсору. Пробел / Shift / BOOST - ускорение.</div>';
+      '<button class="btn ghost" id="btnBack">Назад</button>' +
+      '<div class="status" id="statusText"></div>';
     document.getElementById("btnBack").onclick = showProfileUI;
     document.getElementById("btnHost").onclick = function(){
       var code = genCode();
@@ -532,12 +607,7 @@
 
   function joinGame(code){
     roomCode = code;
-    if (!ws || ws.readyState !== 1){
-      wsConnect();
-      setTimeout(function(){
-        if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "join", room: code, name: myName }));
-      }, 800);
-    } else {
+    if (ws && ws.readyState === 1){
       ws.send(JSON.stringify({ t: "join", room: code, name: myName }));
     }
   }
@@ -555,9 +625,8 @@
       if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "respawn" }));
     };
     document.getElementById("btnQuit").onclick = function(){
-      connected = false; myWorm = null; others = []; foods = [];
-      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "profile", name: myName }));
-      else showProfileUI();
+      myWorm = null; others = []; foods = [];
+      showProfileUI();
     };
   }
 
@@ -585,7 +654,7 @@
 
   resize();
   wsConnect();
-  showLoginUI();
+  showIntroUI();
   requestAnimationFrame(loop);
 })();
 </script>
