@@ -131,10 +131,9 @@ function normAng(a){ while(a>Math.PI)a-=Math.PI*2; while(a<-Math.PI)a+=Math.PI*2
 
 function updateWorm(w, dt){
   if (!w.alive) return;
-  const diff = normAng(w.targetAngle - w.angle);
-  // Скорость поворота зависит от размера — большой червь поворачивает медленнее
-  const maxTurn = (7.5 - Math.min(2, w.radius * 0.04)) * dt;
-  w.angle += Math.max(-maxTurn, Math.min(maxTurn, diff));
+
+  // === БЕЗ ограничения поворота: голова мгновенно смотрит в targetAngle ===
+  w.angle = w.targetAngle;
 
   let speed = w.baseSpeed;
   if (w.boosting && w.boostFuel > 0){
@@ -144,19 +143,17 @@ function updateWorm(w, dt){
   } else {
     w.boostFuel = Math.min(100, w.boostFuel + 15*dt);
   }
-  // Чем больше радиус — тем медленнее
-  speed *= 1 / (1 + (w.radius - 14) * 0.02);
   w.speed = speed;
 
   w.x += Math.cos(w.angle) * speed * dt;
   w.y += Math.sin(w.angle) * speed * dt;
 
-  if (w.x < w.radius){ w.x = w.radius; w.angle = Math.PI - w.angle; w.targetAngle = w.angle; }
-  if (w.x > WORLD_W - w.radius){ w.x = WORLD_W - w.radius; w.angle = Math.PI - w.angle; w.targetAngle = w.angle; }
-  if (w.y < w.radius){ w.y = w.radius; w.angle = -w.angle; w.targetAngle = w.angle; }
-  if (w.y > WORLD_H - w.radius){ w.y = WORLD_H - w.radius; w.angle = -w.angle; w.targetAngle = w.angle; }
+  if (w.x < w.radius){ w.x = w.radius; }
+  if (w.x > WORLD_W - w.radius){ w.x = WORLD_W - w.radius; }
+  if (w.y < w.radius){ w.y = w.radius; }
+  if (w.y > WORLD_H - w.radius){ w.y = WORLD_H - w.radius; }
 
-  // Подгоняем длину сегментов
+  // Подгоняем длину
   const targetLen = Math.floor(w.length);
   while (w.segments.length > targetLen) w.segments.pop();
   while (w.segments.length < targetLen){
@@ -164,12 +161,10 @@ function updateWorm(w, dt){
     w.segments.push({ x: last.x, y: last.y });
   }
 
-  // === Физика цепочки ===
-  // Голова — это сегмент 0
+  // === Цепочка: голова = сегмент 0, остальные тянутся ===
   w.segments[0].x = w.x;
   w.segments[0].y = w.y;
 
-  // Каждый следующий сегмент тянется за предыдущим на расстояние gap
   const gap = w.gap;
   for (let i = 1; i < w.segments.length; i++){
     const prev = w.segments[i-1];
@@ -184,9 +179,9 @@ function updateWorm(w, dt){
     }
     const targetX = prev.x + (dx/dist) * gap;
     const targetY = prev.y + (dy/dist) * gap;
-    // Плавное подтягивание — «резиновая» плавность
-    cur.x += (targetX - cur.x) * 0.8;
-    cur.y += (targetY - cur.y) * 0.8;
+    // Мягкое подтягивание — плавно, но без отрыва
+    cur.x += (targetX - cur.x) * 0.5;
+    cur.y += (targetY - cur.y) * 0.5;
   }
 }
 
