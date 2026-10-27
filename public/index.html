@@ -143,9 +143,6 @@
   var lastInputSend = 0, lastSentAngle = 0;
   var lastPingSend = 0;
 
-  // === Локальное предсказание головы ===
-  var localHeadX = 0, localHeadY = 0, localReady = false;
-
   function resize(){
     DPR = Math.min(window.devicePixelRatio||1, 2);
     viewW = window.innerWidth || document.documentElement.clientWidth;
@@ -220,29 +217,14 @@
       return;
     }
     if (msg.t === "skinSet"){ if (profile) profile.activeSkin = msg.activeSkin; showProfileUI(); return; }
-    if (msg.t === "joined"){
-      myId = msg.id; WORLD_W = msg.world.w; WORLD_H = msg.world.h;
-      overlay.className = ""; dead = false; meHistory = [];
-      localReady = false;
-      return;
-    }
-    if (msg.t === "respawned"){
-      myId = msg.id; dead = false; overlay.className = ""; meHistory = [];
-      localReady = false;
-      return;
-    }
+    if (msg.t === "joined"){ myId = msg.id; WORLD_W = msg.world.w; WORLD_H = msg.world.h; overlay.className = ""; dead = false; meHistory = []; return; }
+    if (msg.t === "respawned"){ myId = msg.id; dead = false; overlay.className = ""; meHistory = []; return; }
     if (msg.t === "error"){ setStatus(msg.message, true); return; }
     if (msg.t === "state"){
       var now = performance.now()/1000;
       if (msg.me){
         meHistory.push({ t: now, data: msg.me });
         while (meHistory.length > 25) meHistory.shift();
-        // Инициализация локальной головы при первом пакете или после респавна
-        if (!localReady){
-          localHeadX = msg.me.x;
-          localHeadY = msg.me.y;
-          localReady = true;
-        }
       }
       if (msg.worms){
         var newMap = {};
@@ -272,61 +254,14 @@
     }
   }
 
-  // === Локальное обновление головы каждый кадр (предсказание) ===
-  function updateLocalHead(dt){
-    if (!myWorm || !myWorm.alive || !localReady) return;
-    var speed = boosting ? myWorm.radius * 0 + (160 * 1.9) : 160;
-    // Учитываем замедление от размера (как на сервере)
-    speed *= 1 / (1 + (myWorm.radius - 14) * 0.02);
-    // Поворот головы к мыши (плавно, но быстро)
-    var diff = targetAngle - (myWorm.angle || 0);
-    while (diff > Math.PI) diff -= Math.PI*2;
-    while (diff < -Math.PI) diff += Math.PI*2;
-    // Двигаем локальную голову по targetAngle
-    localHeadX += Math.cos(targetAngle) * speed * dt;
-    localHeadY += Math.sin(targetAngle) * speed * dt;
-    // Мягко подтягиваем к серверной позиции, чтобы не расходиться
-    var errX = myWorm.x - localHeadX;
-    var errY = myWorm.y - localHeadY;
-    var errDist = Math.sqrt(errX*errX + errY*errY);
-    if (errDist > 200){
-      // Сильное расхождение — жёстко синхронизируемся
-      localHeadX = myWorm.x;
-      localHeadY = myWorm.y;
-    } else {
-      // Плавная коррекция (5% за кадр)
-      localHeadX += errX * 0.05;
-      localHeadY += errY * 0.05;
-    }
-  }
-
-  // Строим сегменты от локальной головы — цепочка
-  function buildLocalSegments(){
-    if (!myWorm || !myWorm.segments || !myWorm.segments.length) return [];
-    var gap = 8;
-    var segs = [[localHeadX, localHeadY]];
-    var src = myWorm.segments;
-    for (var i = 1; i < src.length; i++){
-      var px = segs[i-1][0], py = segs[i-1][1];
-      var sx = src[i][0], sy = src[i][1];
-      var dx = sx - px, dy = sy - py;
-      var d = Math.sqrt(dx*dx + dy*dy);
-      if (d < 0.001){ dx = -Math.cos(targetAngle); dy = -Math.sin(targetAngle); d = 1; }
-      segs.push([px + (dx/d)*gap, py + (dy/d)*gap]);
-    }
-    return segs;
-  }
-
   function getInterpolatedMe(){
-    if (!myWorm) return null;
-    var segs = localReady ? buildLocalSegments() : myWorm.segments;
+    if (!meHistory.length) return null;
+    var last = meHistory[meHistory.length-1].data;
     return {
-      id: myWorm.id, skin: myWorm.skin, color: myWorm.color, alive: myWorm.alive,
-      angle: targetAngle, score: myWorm.score, kills: myWorm.kills,
-      boostFuel: myWorm.boostFuel, radius: myWorm.radius,
-      x: localReady ? localHeadX : myWorm.x,
-      y: localReady ? localHeadY : myWorm.y,
-      segments: segs
+      id: last.id, skin: last.skin, color: last.color, alive: last.alive,
+      angle: last.angle, score: last.score, kills: last.kills,
+      boostFuel: last.boostFuel, radius: last.radius,
+      x: last.x, y: last.y, segments: last.segments
     };
   }
 
@@ -364,9 +299,9 @@
   function sendInput(){
     if (!ws || ws.readyState !== WebSocket.OPEN || !myWorm || !myWorm.alive) return;
     var now = performance.now();
-    if (now - lastInputSend < 16) return;  // до 60 раз/сек
+    if (now - lastInputSend < 16) return;  // 60 раз/сек
     var diff = Math.abs(targetAngle - lastSentAngle);
-    if (diff < 0.003 && !boosting && now - lastInputSend < 50) return;
+    if (diff < 0.002 && !boosting && now - lastInputSend < 40) return;
     lastInputSend = now;
     lastSentAngle = targetAngle;
     ws.send(JSON.stringify({ t: "input", angle: targetAngle, boost: boosting }));
@@ -460,7 +395,7 @@
     ctx.lineWidth = radius*0.7;
     tracePath(path); ctx.stroke();
 
-    // Глаза — на голове, направление от 2-го сегмента к 1-му
+    // Глаза строго на голове, направление от 2-го к 1-му сегменту
     var hx = path[0].x, hy = path[0].y;
     var dirX, dirY;
     if (path.length >= 2){
@@ -469,11 +404,11 @@
       var lenh = Math.sqrt(dxh*dxh + dyh*dyh);
       if (lenh > 0.5){ dirX = dxh/lenh; dirY = dyh/lenh; }
       else {
-        var aa = isMe ? targetAngle : (w.angle || 0);
+        var aa = w.angle || 0;
         dirX = Math.cos(aa); dirY = Math.sin(aa);
       }
     } else {
-      var aa2 = isMe ? targetAngle : (w.angle || 0);
+      var aa2 = w.angle || 0;
       dirX = Math.cos(aa2); dirY = Math.sin(aa2);
     }
     var perpX = -dirY, perpY = dirX;
@@ -833,7 +768,7 @@
       if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "respawn" }));
     };
     document.getElementById("btnQuit").onclick = function(){
-      myWorm = null; others = []; foods = []; meHistory = []; localReady = false;
+      myWorm = null; others = []; foods = []; meHistory = [];
       showProfileUI();
     };
   }
@@ -845,24 +780,15 @@
     el.className = "status" + (isErr ? " err" : (isOk ? " ok" : ""));
   }
 
-  var lastFrameTime = 0;
   function loop(){
     var now = performance.now();
-    var dt = lastFrameTime ? (now - lastFrameTime) / 1000 : 0.016;
-    lastFrameTime = now;
-    if (dt > 0.05) dt = 0.05;
-
-    // Угол к мыши — сразу, без сглаживания
-    if (myWorm && myWorm.alive && pointerActive && localReady){
+    // Угол к мыши — сразу, без ограничений
+    if (myWorm && myWorm.alive && pointerActive){
+      var interp = getInterpolatedMe() || myWorm;
       var wx = pointerX + camX;
       var wy = pointerY + camY;
-      targetAngle = Math.atan2(wy - localHeadY, wx - localHeadX);
+      targetAngle = Math.atan2(wy - interp.y, wx - interp.x);
     }
-
-    // Локальное предсказание головы каждый кадр
-    updateLocalHead(dt);
-
-    // Пинг раз в секунду
     if (now - lastPingSend > 1000 && ws && ws.readyState === 1){
       lastPingSend = now;
       ws.send(JSON.stringify({ t: "ping", ts: now }));
