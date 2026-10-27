@@ -10,7 +10,7 @@
   html,body{height:100%;overflow:hidden;background:#05060f;font-family:-apple-system,BlinkMacSystemFont,Arial,sans-serif;color:#fff;user-select:none;-webkit-user-select:none}
   #wrap{position:fixed;inset:0}
   canvas{display:block;touch-action:none}
-  #leftHud{position:fixed;top:calc(12px + env(safe-area-inset-top));left:calc(12px + env(safe-area-inset-left));z-index:5;display:flex;flex-direction:column;gap:8px;pointer-events:none;width:220px;transition:transform .3s}
+  #leftHud{position:fixed;top:calc(12px + env(safe-area-inset-top));left:calc(12px + env(safe-area-inset-left));z-index:5;display:flex;flex-direction:column;gap:8px;pointer-events:none;width:220px}
   .panel{background:rgba(10,12,26,.7);border:1px solid rgba(124,255,178,.15);border-radius:14px;padding:8px 12px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
   .label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#6a7a9a;margin-bottom:2px}
   .value{font-size:18px;font-weight:800;line-height:1;color:#7CFFB2}
@@ -74,7 +74,7 @@
   #caseReel{position:relative;overflow:hidden;height:90px;margin:16px 0;border-radius:14px;background:rgba(0,0,0,.5);border:1px solid rgba(124,255,178,.3)}
   #caseReelTrack{display:flex;height:100%;will-change:transform}
   .reel-cell{flex:0 0 90px;height:100%;display:flex;align-items:center;justify-content:center;padding:6px;border-right:1px solid rgba(255,255,255,.05)}
-  #caseReel::after{content:'';position:absolute;top:0;bottom:0;left:50%;width:2px;margin-left:-1px;background:#7CFFB2;box-shadow:0 0 12px #7CFFB2;pointer-events:none}
+  #caseReel::after{content:'';position:absolute;top:0;bottom:0;left:50%;width:2px;margin-left:-1px;background:#7CFFB2;box-shadow:0 0 12px #7CFFB2;pointer-events:none;z-index:2}
   #caseResultText{font-size:15px;line-height:1.5;margin:12px 0;padding:14px;border-radius:12px;background:rgba(124,255,178,.08);border:1px solid rgba(124,255,178,.3);opacity:0;transition:opacity .3s}
   #caseResultText.show{opacity:1}
   @media (max-width:700px){
@@ -122,7 +122,7 @@
   var ovCard = document.getElementById("ovCard");
 
   var viewW=0, viewH=0, DPR=1;
-  var camX=0, camY=0, camVelX=0, camVelY=0;
+  var camX=0, camY=0;
   var WORLD_W=5000, WORLD_H=5000;
 
   var ws=null, myId=null, myWorm=null;
@@ -132,13 +132,10 @@
   var dead=false, profile=null;
   var skinCache = {};
 
-  // Плавность: интерполяция
-  var renderDelay = 0.07;
+  var renderDelay = 0.04;
   var meHistory = [];
   var othersPrev = {}, othersCurr = {}, othersLastTime = 0, othersNextTime = 0;
-
-  // Мобильное управление
-  var isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+  var lastInputSend = 0, lastSentAngle = 0;
 
   function resize(){
     DPR = Math.min(window.devicePixelRatio||1, 2);
@@ -248,40 +245,26 @@
 
   function getInterpolatedMe(){
     if (!meHistory.length) return null;
-    var target = performance.now()/1000 - renderDelay;
-    if (target <= meHistory[0].t) return meHistory[0].data;
-    if (target >= meHistory[meHistory.length-1].t) return meHistory[meHistory.length-1].data;
-    for (var i=0;i<meHistory.length-1;i++){
-      var a = meHistory[i], b = meHistory[i+1];
-      if (target >= a.t && target <= b.t){
-        var f = (target - a.t) / (b.t - a.t || 1);
-        return lerpState(a.data, b.data, f);
-      }
-    }
-    return meHistory[meHistory.length-1].data;
+    var last = meHistory[meHistory.length-1].data;
+    var dtSince = performance.now()/1000 - meHistory[meHistory.length-1].t;
+    if (dtSince > 0.2) dtSince = 0.2;
+    var speed = last.boosting ? 300 : 160;
+    var ex = last.x + Math.cos(last.angle) * speed * dtSince;
+    var ey = last.y + Math.sin(last.angle) * speed * dtSince;
+    if (!last.alive){ ex = last.x; ey = last.y; }
+    return {
+      id: last.id, skin: last.skin, color: last.color, alive: last.alive,
+      angle: last.angle, score: last.score, kills: last.kills,
+      boostFuel: last.boostFuel, radius: last.radius,
+      x: ex, y: ey, segments: last.segments
+    };
   }
 
-  function lerpState(a, b, f){
-    var out = { id:b.id, skin:b.skin, color:b.color, alive:b.alive, angle:b.angle,
-      score:b.score, kills:b.kills, boostFuel:b.boostFuel,
-      radius:a.radius + (b.radius-a.radius)*f,
-      x:a.x + (b.x-a.x)*f, y:a.y + (b.y-a.y)*f,
-      segments: [] };
-    var n = Math.min(a.segments.length, b.segments.length);
-    for (var i=0;i<n;i++){
-      out.segments.push([
-        a.segments[i][0] + (b.segments[i][0]-a.segments[i][0])*f,
-        a.segments[i][1] + (b.segments[i][1]-a.segments[i][1])*f
-      ]);
-    }
-    return out;
-  }
   function lerpOther(a, b, f){
     var out = { id:b.id, name:b.name, skin:b.skin, color:b.color, alive:b.alive, angle:b.angle,
       score:b.score, kills:b.kills,
       radius:a.radius + (b.radius-a.radius)*f,
-      x:a.x + (b.x-a.x)*f, y:a.y + (b.y-a.y)*f,
-      segments: [] };
+      x:a.x + (b.x-a.x)*f, y:a.y + (b.y-a.y)*f, segments: [] };
     var n = Math.min(a.segments.length, b.segments.length);
     for (var i=0;i<n;i++){
       out.segments.push([
@@ -310,6 +293,12 @@
 
   function sendInput(){
     if (!ws || ws.readyState !== WebSocket.OPEN || !myWorm || !myWorm.alive) return;
+    var now = performance.now();
+    if (now - lastInputSend < 33) return;
+    var diff = Math.abs(targetAngle - lastSentAngle);
+    if (diff < 0.01 && !boosting && now - lastInputSend < 100) return;
+    lastInputSend = now;
+    lastSentAngle = targetAngle;
     ws.send(JSON.stringify({ t: "input", angle: targetAngle, boost: boosting }));
   }
 
@@ -323,17 +312,14 @@
     leaderList.innerHTML = html || '<div style="color:#4a5570;font-size:11px">Пока никого</div>';
   }
 
-  // === Отрисовка скинов ===
   function paintSkinIntoContext(c, skin, w, h){
     var s = skinCache[skin] || { pattern:'solid', c1:'#7CFFB2', c2:'#4ecca3' };
     if (s.pattern === 'gradient'){
       var g = c.createLinearGradient(0,0,w,h);
       g.addColorStop(0, s.c1); g.addColorStop(1, s.c2);
-      c.fillStyle = g;
-      c.fillRect(0,0,w,h);
+      c.fillStyle = g; c.fillRect(0,0,w,h);
     } else if (s.pattern === 'stripes'){
-      c.fillStyle = s.c1;
-      c.fillRect(0,0,w,h);
+      c.fillStyle = s.c1; c.fillRect(0,0,w,h);
       c.fillStyle = s.c2;
       var step = Math.max(4, w/10);
       for (var i=-h;i<w+h;i+=step*2){
@@ -342,8 +328,7 @@
         c.closePath(); c.fill();
       }
     } else if (s.pattern === 'dots'){
-      c.fillStyle = s.c1;
-      c.fillRect(0,0,w,h);
+      c.fillStyle = s.c1; c.fillRect(0,0,w,h);
       c.fillStyle = s.c2;
       var d = Math.max(3, w/8);
       for (var yy=d/2; yy<h; yy+=d*1.5){
@@ -352,38 +337,18 @@
         }
       }
     } else {
-      c.fillStyle = s.c1;
-      c.fillRect(0,0,w,h);
+      c.fillStyle = s.c1; c.fillRect(0,0,w,h);
     }
   }
 
-  function makeSkinPreview(skinId){
-    var div = document.createElement("div");
-    div.className = "skin-preview";
-    var inner = document.createElement("div");
-    inner.className = "skin-preview-inner";
-    var cv = document.createElement("canvas");
-    cv.width = 48; cv.height = 48;
-    cv.style.width = "100%"; cv.style.height = "100%"; cv.style.display = "block";
-    cv.style.borderRadius = "8px";
-    paintSkinIntoContext(cv.getContext("2d"), skinId, 48, 48);
-    inner.appendChild(cv);
-    div.appendChild(inner);
-    return div;
-  }
-
-  // === Рисование червя ===
   function drawWormBody(w, isMe){
     if (!w.alive || !w.segments || w.segments.length < 2) return;
     var segs = w.segments;
     var radius = w.radius || 14;
     var skin = skinCache[w.skin] || { pattern:'solid', c1:w.color||'#7CFFB2', c2:'#4ecca3' };
-
-    // Строим путь из точек
     var path = [];
     for (var i=0;i<segs.length;i++) path.push({x: segs[i][0], y: segs[i][1]});
 
-    // Обводка-свечение
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     ctx.shadowColor = skin.c1;
     ctx.shadowBlur = isMe ? 22 : 14;
@@ -395,40 +360,30 @@
     ctx.stroke();
     ctx.shadowBlur = 0;
 
-    // Заливка с узором: рисуем поверх толстым stroke с clip
-    // Просто рисуем второй stroke с паттерном цвета c2 и dash
     if (skin.pattern === 'gradient'){
       var g = ctx.createLinearGradient(path[path.length-1].x, path[path.length-1].y, path[0].x, path[0].y);
-      g.addColorStop(0, skin.c2);
-      g.addColorStop(1, skin.c1);
-      ctx.strokeStyle = g;
-      ctx.lineWidth = radius*1.9;
+      g.addColorStop(0, skin.c2); g.addColorStop(1, skin.c1);
+      ctx.strokeStyle = g; ctx.lineWidth = radius*1.9;
       ctx.beginPath();
       ctx.moveTo(path[0].x, path[0].y);
       for (var jj=1;jj<path.length;jj++) ctx.lineTo(path[jj].x, path[jj].y);
       ctx.stroke();
     } else if (skin.pattern === 'stripes'){
-      ctx.strokeStyle = skin.c2;
-      ctx.lineWidth = radius*1.9;
+      ctx.strokeStyle = skin.c2; ctx.lineWidth = radius*1.9;
       ctx.setLineDash([radius*0.9, radius*0.9]);
       ctx.beginPath();
       ctx.moveTo(path[0].x, path[0].y);
       for (var j2=1;j2<path.length;j2++) ctx.lineTo(path[j2].x, path[j2].y);
-      ctx.stroke();
-      ctx.setLineDash([]);
+      ctx.stroke(); ctx.setLineDash([]);
     } else if (skin.pattern === 'dots'){
-      ctx.strokeStyle = skin.c2;
-      ctx.lineWidth = radius*1.9;
+      ctx.strokeStyle = skin.c2; ctx.lineWidth = radius*1.9;
       ctx.setLineDash([radius*0.3, radius*1.2]);
-      ctx.lineCap = "round";
       ctx.beginPath();
       ctx.moveTo(path[0].x, path[0].y);
       for (var j3=1;j3<path.length;j3++) ctx.lineTo(path[j3].x, path[j3].y);
-      ctx.stroke();
-      ctx.setLineDash([]);
+      ctx.stroke(); ctx.setLineDash([]);
     }
 
-    // Блики по центру
     ctx.strokeStyle = "rgba(255,255,255,0.22)";
     ctx.lineWidth = radius*0.7;
     ctx.beginPath();
@@ -436,7 +391,6 @@
     for (var j4=1;j4<path.length;j4++) ctx.lineTo(path[j4].x, path[j4].y);
     ctx.stroke();
 
-    // Голова с глазами
     var hx = path[0].x, hy = path[0].y, angle = w.angle || 0;
     var dirX = Math.cos(angle), dirY = Math.sin(angle);
     var perpX = -dirY, perpY = dirX;
@@ -459,12 +413,8 @@
     if (interpMe && interpMe.alive){
       var tcx = interpMe.x - viewW/2;
       var tcy = interpMe.y - viewH/2;
-      // Плавная камера с пружиной
-      var k = 0.14, damp = 0.75;
-      camVelX = (camVelX + (tcx-camX)*k) * damp;
-      camVelY = (camVelY + (tcy-camY)*k) * damp;
-      camX += camVelX;
-      camY += camVelY;
+      camX += (tcx - camX) * 0.35;
+      camY += (tcy - camY) * 0.35;
     }
     camX = Math.max(0, Math.min(WORLD_W-viewW, camX));
     camY = Math.max(0, Math.min(WORLD_H-viewH, camY));
@@ -525,8 +475,7 @@
   function drawMinimap(interpMe, interpOthers){
     var mw = mapCanvas.width, mh = mapCanvas.height;
     mapCtx.clearRect(0,0,mw,mh);
-    mapCtx.fillStyle = "#0a0c1a";
-    mapCtx.fillRect(0,0,mw,mh);
+    mapCtx.fillStyle = "#0a0c1a"; mapCtx.fillRect(0,0,mw,mh);
     mapCtx.strokeStyle = "rgba(124,255,178,0.2)"; mapCtx.lineWidth = 1;
     mapCtx.strokeRect(0.5,0.5,mw-1,mh-1);
     var sx = mw/WORLD_W, sy = mh/WORLD_H;
@@ -546,7 +495,6 @@
     }
   }
 
-  // === Экраны ===
   function showIntroUI(){
     overlay.className = "show";
     ovCard.innerHTML =
@@ -617,7 +565,6 @@
       var owned = profile.skins.indexOf(sk.id) !== -1;
       var active = sk.id === profile.activeSkin ? " active" : "";
       var locked = owned ? "" : " locked";
-      var preview = owned ? "" : "";
       cells += '<div class="skin-cell'+locked+' '+active+'" data-skin="'+sk.id+'" data-owned="'+(owned?1:0)+'">' +
         '<span class="skin-rarity r-'+sk.rarity+'">'+sk.rarity+'</span>' +
         (owned ? '<div class="skin-preview"><div class="skin-preview-inner"><canvas data-skin-canvas="'+sk.id+'" width="48" height="48" style="width:100%;height:100%;display:block;border-radius:8px"></canvas></div></div>' : '<div class="skin-preview"></div>') +
@@ -642,7 +589,6 @@
       '<div class="skin-grid">'+cells+'</div>' +
       '<div class="status" id="statusText"></div>';
 
-    // Нарисовать превью на канвасах
     var canvases = ovCard.querySelectorAll("canvas[data-skin-canvas]");
     for (var c=0;c<canvases.length;c++){
       var cv = canvases[c];
@@ -650,9 +596,7 @@
       paintSkinIntoContext(cv.getContext("2d"), sid, 48, 48);
     }
 
-    document.getElementById("btnPlay").onclick = function(){
-      joinGame();
-    };
+    document.getElementById("btnPlay").onclick = function(){ joinGame(); };
     document.getElementById("btnCases").onclick = showCasesUI;
     document.getElementById("btnPwd").onclick = showPasswordUI;
     document.getElementById("btnLogout").onclick = function(){
@@ -724,16 +668,13 @@
   function animateCase(skinId, alreadyOwned, refund){
     var wrap = document.getElementById("caseReelWrap");
     if (!wrap) return;
-    // Строим ленту из 40 случайных скинов + победитель в конце
     var reelItems = [];
     for (var i=0;i<40;i++){
       var rndSkin = profile.allSkins[Math.floor(Math.random()*profile.allSkins.length)];
       reelItems.push(rndSkin);
     }
     var winner = skinCache[skinId] || profile.allSkins[0];
-    // Победитель на позиции 40
     reelItems.push(winner);
-    // Ещё 10 после, чтобы было куда докрутиться
     for (var k=0;k<10;k++){
       var rnd2 = profile.allSkins[Math.floor(Math.random()*profile.allSkins.length)];
       reelItems.push(rnd2);
@@ -743,14 +684,12 @@
     var cellW = 90;
     var html = '<div id="caseReel"><div id="caseReelTrack">';
     for (var r=0;r<total;r++){
-      var s = reelItems[r];
       var cid = 'reelcv_'+r;
       html += '<div class="reel-cell"><canvas id="'+cid+'" width="60" height="60" style="width:60px;height:60px;border-radius:10px"></canvas></div>';
     }
     html += '</div></div>';
     html += '<div id="caseResultText"></div>';
     wrap.innerHTML = html;
-    // Нарисовать все превью
     for (var rr=0;rr<total;rr++){
       var cv = document.getElementById('reelcv_'+rr);
       if (cv) paintSkinIntoContext(cv.getContext("2d"), reelItems[rr].id, 60, 60);
@@ -759,17 +698,14 @@
     var reel = document.getElementById("caseReel");
     var containerW = reel.clientWidth;
     var targetX = -(winIdx*cellW + cellW/2 - containerW/2);
-    // Анимация: плавная с cubic-bezier через ручной rAF
     var startTime = performance.now();
     var duration = 3200;
-    var startX = 0;
     function easeOutQuart(t){ return 1 - Math.pow(1-t, 4); }
     function tick(){
       var t = (performance.now() - startTime) / duration;
       if (t > 1) t = 1;
       var e = easeOutQuart(t);
-      var x = startX + (targetX - startX) * e;
-      // Небольшое перерегулирование
+      var x = 0 + (targetX - 0) * e;
       track.style.transform = 'translateX(' + x + 'px)';
       if (t < 1) { requestAnimationFrame(tick); }
       else {
@@ -812,14 +748,19 @@
     el.className = "status" + (isErr ? " err" : (isOk ? " ok" : ""));
   }
 
-  function loop(nowMs){
+  function loop(){
     var t = performance.now()/1000;
     if (myWorm && myWorm.alive && pointerActive){
-      // Используем интерполированную позицию для точности
       var interp = getInterpolatedMe() || myWorm;
       var wx = pointerX + camX;
       var wy = pointerY + camY;
-      targetAngle = Math.atan2(wy - interp.y, wx - interp.x);
+      var rawTarget = Math.atan2(wy - interp.y, wx - interp.x);
+      var diff = rawTarget - targetAngle;
+      while (diff > Math.PI) diff -= Math.PI*2;
+      while (diff < -Math.PI) diff += Math.PI*2;
+      targetAngle += diff * 0.35;
+      while (targetAngle > Math.PI) targetAngle -= Math.PI*2;
+      while (targetAngle < -Math.PI) targetAngle += Math.PI*2;
     }
     sendInput();
     drawWorld(t);
