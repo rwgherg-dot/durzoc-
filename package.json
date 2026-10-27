@@ -1,15 +1,8 @@
 {
   "name": "worms-game",
   "version": "1.0.0",
-  "description": "Worms Online - multiplayer worm game",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "dependencies": {
-    "ws": "^8.16.0"
-  }
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18.0.0" },
+  "dependencies": { "ws": "^8.16.0" }
 }
