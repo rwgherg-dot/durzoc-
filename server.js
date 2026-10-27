@@ -7,9 +7,7 @@ const PORT = process.env.PORT || 3000;
 
 const server = http.createServer((req, res) => {
   let filePath = path.join(__dirname, 'public', req.url === '/' ? 'index.html' : req.url);
-  if (!filePath.startsWith(path.join(__dirname, 'public'))) {
-    res.writeHead(403); res.end('Forbidden'); return;
-  }
+  if (!filePath.startsWith(path.join(__dirname, 'public'))) { res.writeHead(403); res.end('Forbidden'); return; }
   fs.readFile(filePath, (err, data) => {
     if (err) { res.writeHead(404); res.end('Not found'); return; }
     const ext = path.extname(filePath);
@@ -21,9 +19,10 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocket.Server({ server });
 
-const WORLD_W = 4000, WORLD_H = 4000;
+// Один общий мир для всех
+const WORLD_W = 5000, WORLD_H = 5000;
 const TICK_RATE = 30;
-const FOOD_COUNT = 500;
+const FOOD_COUNT = 600;
 const FOOD_COLORS = ['#ff6b6b','#ffd93d','#4ecdc4','#c44dff','#ff9f1c','#7CFFB2','#ff5fa2'];
 
 const FOOD_TYPES = {
@@ -33,25 +32,26 @@ const FOOD_TYPES = {
   wide:    { points: 2, growLen: 1, growW: 1.5 }
 };
 
+// Скины: pattern описывает узор, а не только цвет
 const SKINS = [
-  { id: 'classic',  name: 'Классик',  color: '#7CFFB2', rarity: 'common' },
-  { id: 'ember',    name: 'Уголёк',   color: '#ff6b6b', rarity: 'common' },
-  { id: 'sun',      name: 'Солнце',   color: '#ffd93d', rarity: 'common' },
-  { id: 'mint',     name: 'Мята',     color: '#4ecdc4', rarity: 'common' },
-  { id: 'violet',   name: 'Фиалка',   color: '#c44dff', rarity: 'rare' },
-  { id: 'orange',   name: 'Апельсин', color: '#ff9f1c', rarity: 'rare' },
-  { id: 'pink',     name: 'Роза',     color: '#ff5fa2', rarity: 'rare' },
-  { id: 'ice',      name: 'Лёд',      color: '#a0e9ff', rarity: 'rare' },
-  { id: 'toxic',    name: 'Токсин',   color: '#a8ff3e', rarity: 'epic' },
-  { id: 'blood',    name: 'Кровь',    color: '#b3001b', rarity: 'epic' },
-  { id: 'void',     name: 'Пустота',  color: '#2d0a4e', rarity: 'legendary' },
-  { id: 'gold',     name: 'Золото',   color: '#ffcc00', rarity: 'legendary' }
+  { id:'classic', name:'Классик', rarity:'common', pattern:'solid',    c1:'#7CFFB2', c2:'#4ecca3' },
+  { id:'ember',   name:'Уголёк',  rarity:'common', pattern:'gradient', c1:'#ff6b6b', c2:'#b3001b' },
+  { id:'sun',     name:'Солнце',  rarity:'common', pattern:'stripes',  c1:'#ffd93d', c2:'#ff9f1c' },
+  { id:'mint',    name:'Мята',    rarity:'common', pattern:'dots',     c1:'#4ecdc4', c2:'#2e8b6f' },
+  { id:'violet',  name:'Фиалка',  rarity:'rare',   pattern:'gradient', c1:'#c44dff', c2:'#6b1a8f' },
+  { id:'orange',  name:'Апельсин',rarity:'rare',   pattern:'stripes',  c1:'#ff9f1c', c2:'#c46b00' },
+  { id:'pink',    name:'Роза',    rarity:'rare',   pattern:'dots',     c1:'#ff5fa2', c2:'#a83265' },
+  { id:'ice',     name:'Лёд',     rarity:'rare',   pattern:'gradient', c1:'#a0e9ff', c2:'#4a9bc4' },
+  { id:'toxic',   name:'Токсин',  rarity:'epic',   pattern:'stripes',  c1:'#a8ff3e', c2:'#5a991e' },
+  { id:'blood',   name:'Кровь',   rarity:'epic',   pattern:'dots',     c1:'#ff2e4d', c2:'#8f0018' },
+  { id:'void',    name:'Пустота', rarity:'legendary',pattern:'gradient',c1:'#5a2a8e', c2:'#120524' },
+  { id:'gold',    name:'Золото',  rarity:'legendary',pattern:'stripes',c1:'#ffcc00', c2:'#a87800' }
 ];
 
 const CASES = [
-  { id: 'common',    name: 'Обычный',     price: 100,  chances: { common: 0.70, rare: 0.25, epic: 0.045, legendary: 0.005 } },
-  { id: 'rare',      name: 'Редкий',      price: 300,  chances: { common: 0.30, rare: 0.50, epic: 0.18,  legendary: 0.02  } },
-  { id: 'legendary', name: 'Легендарный', price: 1000, chances: { common: 0.00, rare: 0.20, epic: 0.55,  legendary: 0.25  } }
+  { id:'common',    name:'Обычный',     price:100,  chances:{ common:0.70, rare:0.25, epic:0.045, legendary:0.005 } },
+  { id:'rare',      name:'Редкий',      price:300,  chances:{ common:0.30, rare:0.50, epic:0.18,  legendary:0.02  } },
+  { id:'legendary', name:'Легендарный', price:1000, chances:{ common:0.00, rare:0.20, epic:0.55,  legendary:0.25  } }
 ];
 
 const profiles = {};
@@ -59,28 +59,27 @@ const profiles = {};
 function createProfile(name, password, isAdmin) {
   if (profiles[name]) return null;
   profiles[name] = {
-    name,
-    password: password || '',
+    name, password: password || '',
     coins: isAdmin ? 999999 : 500,
     skins: isAdmin ? SKINS.map(s => s.id) : ['classic'],
     activeSkin: 'classic',
     isAdmin: !!isAdmin,
-    kills: 0,
-    deaths: 0,
+    kills: 0, deaths: 0,
     registeredAt: Date.now()
   };
   return profiles[name];
 }
-function getProfile(name) { return name ? (profiles[name] || null) : null; }
+function getProfile(name){ return name ? (profiles[name]||null) : null; }
 
 if (!profiles['admin worms']) createProfile('admin worms', 'admin123', true);
 
-function skinColor(id) {
+function skinColor(id){
   const s = SKINS.find(x => x.id === id);
-  return s ? s.color : '#7CFFB2';
+  return s ? s.c1 : '#7CFFB2';
 }
+function skinById(id){ return SKINS.find(x => x.id === id) || SKINS[0]; }
 
-function rollCase(caseId) {
+function rollCase(caseId){
   const c = CASES.find(x => x.id === caseId);
   if (!c) return 'classic';
   const r = Math.random();
@@ -91,18 +90,17 @@ function rollCase(caseId) {
   }
   const pool = SKINS.filter(s => s.rarity === chosen);
   if (!pool.length) return 'classic';
-  return pool[Math.floor(Math.random() * pool.length)].id;
+  return pool[Math.floor(Math.random()*pool.length)].id;
 }
 
 let foods = [];
 let worms = {};
-let rooms = {};
 let nextWormId = 1;
 
-function rand(min, max) { return min + Math.random() * (max - min); }
-function randi(min, max) { return Math.floor(rand(min, max + 1)); }
+function rand(min, max){ return min + Math.random()*(max-min); }
+function randi(min, max){ return Math.floor(rand(min, max+1)); }
 
-function makeFood() {
+function makeFood(){
   const r = Math.random();
   let type = 'normal';
   if (r < 0.05) type = 'golden';
@@ -110,41 +108,42 @@ function makeFood() {
   else if (r < 0.25) type = 'wide';
   return {
     id: Math.random().toString(36).slice(2),
-    x: rand(20, WORLD_W - 20),
-    y: rand(20, WORLD_H - 20),
-    r: type === 'golden' ? 8 : (type === 'bonus' ? 6 : 4 + Math.random() * 3),
-    type,
-    color: FOOD_COLORS[randi(0, FOOD_COLORS.length - 1)],
-    pulse: Math.random() * Math.PI * 2
+    x: rand(20, WORLD_W-20), y: rand(20, WORLD_H-20),
+    r: type==='golden'?8:(type==='bonus'?6:4+Math.random()*3),
+    type, color: FOOD_COLORS[randi(0, FOOD_COLORS.length-1)],
+    pulse: Math.random()*Math.PI*2
   };
 }
-function initFood() { foods = []; for (let i=0;i<FOOD_COUNT;i++) foods.push(makeFood()); }
+function initFood(){ foods=[]; for (let i=0;i<FOOD_COUNT;i++) foods.push(makeFood()); }
 initFood();
 
-function makeWorm(name, color) {
+function makeWorm(name, skinId){
   const id = 'w' + (nextWormId++);
+  const skin = skinById(skinId);
   const w = {
-    id, name: name || 'Игрок', color: color || '#7CFFB2',
+    id, name: name || 'Игрок',
+    skin: skin.id,
+    color: skin.c1,
     x: rand(200, WORLD_W-200), y: rand(200, WORLD_H-200),
     angle: Math.random()*Math.PI*2, targetAngle: 0,
     baseSpeed: 160, speed: 160, radius: 14, length: 25, gap: 8,
     segments: [], score: 0, alive: true, boosting: false, boostFuel: 100,
-    room: null, kills: 0, skin: 'classic'
+    kills: 0
   };
   w.targetAngle = w.angle;
-  for (let i = 0; i < w.length; i++) w.segments.push({ x: w.x - Math.cos(w.angle)*i*w.gap, y: w.y - Math.sin(w.angle)*i*w.gap });
+  for (let i=0;i<w.length;i++) w.segments.push({ x: w.x - Math.cos(w.angle)*i*w.gap, y: w.y - Math.sin(w.angle)*i*w.gap });
   return w;
 }
 
-function normAng(a) { while (a > Math.PI) a -= Math.PI*2; while (a < -Math.PI) a += Math.PI*2; return a; }
+function normAng(a){ while(a>Math.PI)a-=Math.PI*2; while(a<-Math.PI)a+=Math.PI*2; return a; }
 
-function updateWorm(w, dt) {
+function updateWorm(w, dt){
   if (!w.alive) return;
   const diff = normAng(w.targetAngle - w.angle);
-  const maxTurn = 6.0 * dt;
+  const maxTurn = 6.5*dt;
   w.angle += Math.max(-maxTurn, Math.min(maxTurn, diff));
   let speed = w.baseSpeed;
-  if (w.boosting && w.boostFuel > 0) {
+  if (w.boosting && w.boostFuel > 0){
     speed *= 1.9;
     w.boostFuel = Math.max(0, w.boostFuel - 40*dt);
     if (w.length > 15) w.length = Math.max(15, w.length - 3*dt);
@@ -154,57 +153,57 @@ function updateWorm(w, dt) {
   w.speed = speed;
   w.x += Math.cos(w.angle)*speed*dt;
   w.y += Math.sin(w.angle)*speed*dt;
-  if (w.x < w.radius) { w.x = w.radius; w.angle = Math.PI - w.angle; w.targetAngle = w.angle; }
-  if (w.x > WORLD_W - w.radius) { w.x = WORLD_W - w.radius; w.angle = Math.PI - w.angle; w.targetAngle = w.angle; }
-  if (w.y < w.radius) { w.y = w.radius; w.angle = -w.angle; w.targetAngle = w.angle; }
-  if (w.y > WORLD_H - w.radius) { w.y = WORLD_H - w.radius; w.angle = -w.angle; w.targetAngle = w.angle; }
+  if (w.x < w.radius){ w.x=w.radius; w.angle=Math.PI-w.angle; w.targetAngle=w.angle; }
+  if (w.x > WORLD_W-w.radius){ w.x=WORLD_W-w.radius; w.angle=Math.PI-w.angle; w.targetAngle=w.angle; }
+  if (w.y < w.radius){ w.y=w.radius; w.angle=-w.angle; w.targetAngle=w.angle; }
+  if (w.y > WORLD_H-w.radius){ w.y=WORLD_H-w.radius; w.angle=-w.angle; w.targetAngle=w.angle; }
   w.segments.unshift({ x: w.x, y: w.y });
   const targetLen = Math.floor(w.length);
   while (w.segments.length > targetLen) w.segments.pop();
-  while (w.segments.length < targetLen) {
-    const last = w.segments[w.segments.length-1] || { x: w.x, y: w.y };
-    w.segments.push({ x: last.x, y: last.y });
+  while (w.segments.length < targetLen){
+    const last = w.segments[w.segments.length-1] || { x:w.x, y:w.y };
+    w.segments.push({ x:last.x, y:last.y });
   }
 }
 
-function eatCheck(w) {
-  for (let i = foods.length-1; i >= 0; i--) {
+function eatCheck(w){
+  for (let i=foods.length-1;i>=0;i--){
     const f = foods[i];
-    const dx = f.x - w.x, dy = f.y - w.y;
+    const dx = f.x-w.x, dy = f.y-w.y;
     const rr = w.radius + f.r + 6;
-    if (dx*dx + dy*dy < rr*rr) {
+    if (dx*dx+dy*dy < rr*rr){
       const cfg = FOOD_TYPES[f.type];
       w.score += cfg.points;
       w.length = Math.min(400, w.length + cfg.growLen);
       w.radius = Math.min(45, w.radius + cfg.growW);
-      w.boostFuel = Math.min(100, w.boostFuel + (f.type === 'golden' ? 30 : 10));
+      w.boostFuel = Math.min(100, w.boostFuel + (f.type==='golden'?30:10));
       foods[i] = makeFood();
     }
   }
 }
 
-function checkCollisions() {
+function checkCollisions(){
   const list = Object.values(worms).filter(w => w.alive);
-  for (let a = 0; a < list.length; a++) {
+  for (let a=0;a<list.length;a++){
     const w = list[a];
     if (!w.alive) continue;
-    for (let b = 0; b < list.length; b++) {
-      if (a === b) continue;
+    for (let b=0;b<list.length;b++){
+      if (a===b) continue;
       const o = list[b];
-      if (!o.alive || w.room !== o.room) continue;
-      for (let s = 4; s < o.segments.length; s += 2) {
+      if (!o.alive) continue;
+      for (let s=4;s<o.segments.length;s+=2){
         const seg = o.segments[s];
-        const dx = seg.x - w.x, dy = seg.y - w.y;
+        const dx = seg.x-w.x, dy = seg.y-w.y;
         const rr = w.radius + o.radius - 6;
-        if (dx*dx + dy*dy < rr*rr) {
+        if (dx*dx+dy*dy < rr*rr){
           w.alive = false;
-          o.kills++; o.score += Math.floor(w.score * 0.3);
+          o.kills++; o.score += Math.floor(w.score*0.3);
           const po = getProfile(o.name); if (po) po.kills++;
           const pw = getProfile(w.name); if (pw) pw.deaths++;
-          for (let k = 0; k < w.segments.length; k += 3) {
+          for (let k=0;k<w.segments.length;k+=3){
             const seg = w.segments[k];
             const nf = makeFood();
-            nf.x = seg.x + rand(-10,10); nf.y = seg.y + rand(-10,10);
+            nf.x = seg.x+rand(-10,10); nf.y = seg.y+rand(-10,10);
             nf.color = w.color; nf.type = 'bonus';
             foods.push(nf);
           }
@@ -216,11 +215,11 @@ function checkCollisions() {
   }
 }
 
-function sendProfile(ws, name) {
+function sendProfile(ws, name){
   const prof = getProfile(name);
   if (!prof) return;
   ws.send(JSON.stringify({
-    t: 'profile',
+    t:'profile',
     name: prof.name, coins: prof.coins, skins: prof.skins,
     activeSkin: prof.activeSkin, isAdmin: prof.isAdmin,
     kills: prof.kills, deaths: prof.deaths,
@@ -228,32 +227,32 @@ function sendProfile(ws, name) {
   }));
 }
 
-function leaderboard() {
+function leaderboard(){
   const arr = [];
-  for (const name in profiles) {
+  for (const name in profiles){
     const p = profiles[name];
-    arr.push({ name: p.name, kills: p.kills, deaths: p.deaths, isAdmin: p.isAdmin });
+    arr.push({ name:p.name, kills:p.kills, deaths:p.deaths, isAdmin:p.isAdmin });
   }
-  arr.sort((a,b) => b.kills - a.kills);
-  return arr.slice(0, 20);
+  arr.sort((a,b)=>b.kills-a.kills);
+  return arr.slice(0,20);
 }
 
 const clients = new Map();
 
 wss.on('connection', (ws) => {
-  try { ws.send(JSON.stringify({ t: 'leaderboard', list: leaderboard() })); } catch(e){}
+  try { ws.send(JSON.stringify({ t:'leaderboard', list: leaderboard() })); } catch(e){}
 
   ws.on('message', (raw) => {
     let msg;
-    try { msg = JSON.parse(raw); } catch(e) { return; }
+    try { msg = JSON.parse(raw); } catch(e){ return; }
     if (!msg || !msg.t) return;
 
-    if (msg.t === 'register') {
-      const name = String(msg.name || '').trim().slice(0, 16);
-      const pass = String(msg.password || '').slice(0, 40);
-      if (name.length < 2) { ws.send(JSON.stringify({ t:'authError', message:'Имя от 2 символов' })); return; }
-      if (pass.length < 4) { ws.send(JSON.stringify({ t:'authError', message:'Пароль от 4 символов' })); return; }
-      if (profiles[name]) { ws.send(JSON.stringify({ t:'authError', message:'Имя уже занято' })); return; }
+    if (msg.t === 'register'){
+      const name = String(msg.name||'').trim().slice(0,16);
+      const pass = String(msg.password||'').slice(0,40);
+      if (name.length < 2){ ws.send(JSON.stringify({ t:'authError', message:'Имя от 2 символов' })); return; }
+      if (pass.length < 4){ ws.send(JSON.stringify({ t:'authError', message:'Пароль от 4 символов' })); return; }
+      if (profiles[name]){ ws.send(JSON.stringify({ t:'authError', message:'Имя уже занято' })); return; }
       createProfile(name, pass, false);
       ws.send(JSON.stringify({ t:'authOk', name }));
       sendProfile(ws, name);
@@ -261,82 +260,73 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    if (msg.t === 'login') {
-      const name = String(msg.name || '').trim().slice(0, 16);
-      const pass = String(msg.password || '').slice(0, 40);
+    if (msg.t === 'login'){
+      const name = String(msg.name||'').trim().slice(0,16);
+      const pass = String(msg.password||'').slice(0,40);
       const prof = getProfile(name);
-      if (!prof) { ws.send(JSON.stringify({ t:'authError', message:'Игрок не найден' })); return; }
-      if (prof.password !== pass) { ws.send(JSON.stringify({ t:'authError', message:'Неверный пароль' })); return; }
+      if (!prof){ ws.send(JSON.stringify({ t:'authError', message:'Игрок не найден' })); return; }
+      if (prof.password !== pass){ ws.send(JSON.stringify({ t:'authError', message:'Неверный пароль' })); return; }
       ws.send(JSON.stringify({ t:'authOk', name }));
       sendProfile(ws, name);
       return;
     }
 
-    if (msg.t === 'changePassword') {
-      const prof = getProfile(String(msg.name || '').slice(0, 16));
+    if (msg.t === 'changePassword'){
+      const prof = getProfile(String(msg.name||'').slice(0,16));
       if (!prof) return;
-      if (prof.password !== String(msg.oldPassword || '')) {
-        ws.send(JSON.stringify({ t:'pwdError', message:'Старый пароль неверный' })); return;
-      }
-      const np = String(msg.newPassword || '');
-      if (np.length < 4) { ws.send(JSON.stringify({ t:'pwdError', message:'Новый пароль от 4 символов' })); return; }
+      if (prof.password !== String(msg.oldPassword||'')){ ws.send(JSON.stringify({ t:'pwdError', message:'Старый пароль неверный' })); return; }
+      const np = String(msg.newPassword||'');
+      if (np.length < 4){ ws.send(JSON.stringify({ t:'pwdError', message:'Новый пароль от 4 символов' })); return; }
       prof.password = np;
       ws.send(JSON.stringify({ t:'pwdOk' }));
       return;
     }
 
-    if (msg.t === 'profile') { sendProfile(ws, String(msg.name || '').slice(0,16)); return; }
+    if (msg.t === 'profile'){ sendProfile(ws, String(msg.name||'').slice(0,16)); return; }
 
-    if (msg.t === 'openCase') {
-      const prof = getProfile(String(msg.name || '').slice(0,16));
+    if (msg.t === 'openCase'){
+      const prof = getProfile(String(msg.name||'').slice(0,16));
       if (!prof) return;
       const c = CASES.find(x => x.id === msg.caseId);
       if (!c) return;
-      if (prof.coins < c.price) {
-        ws.send(JSON.stringify({ t:'caseResult', error:'Недостаточно монет', coins:prof.coins, skins:prof.skins })); return;
-      }
+      if (prof.coins < c.price){ ws.send(JSON.stringify({ t:'caseResult', error:'Недостаточно монет', coins:prof.coins, skins:prof.skins })); return; }
       prof.coins -= c.price;
       const skinId = rollCase(c.id);
       const alreadyOwned = prof.skins.includes(skinId);
       if (!alreadyOwned) prof.skins.push(skinId);
       let refund = 0;
-      if (alreadyOwned) {
+      if (alreadyOwned){
         const sk = SKINS.find(s => s.id === skinId);
-        refund = sk.rarity === 'legendary' ? 500 : sk.rarity === 'epic' ? 200 : 50;
+        refund = sk.rarity==='legendary'?500:sk.rarity==='epic'?200:50;
         prof.coins += refund;
       }
       ws.send(JSON.stringify({ t:'caseResult', skinId, alreadyOwned, refund, coins:prof.coins, skins:prof.skins }));
       return;
     }
 
-    if (msg.t === 'setSkin') {
-      const prof = getProfile(String(msg.name || '').slice(0,16));
+    if (msg.t === 'setSkin'){
+      const prof = getProfile(String(msg.name||'').slice(0,16));
       if (!prof || !prof.skins.includes(msg.skinId)) return;
       prof.activeSkin = msg.skinId;
       const w = worms[msg.wormId];
-      if (w) { w.color = skinColor(msg.skinId); w.skin = msg.skinId; }
+      if (w){ w.skin = msg.skinId; w.color = skinColor(msg.skinId); }
       ws.send(JSON.stringify({ t:'skinSet', activeSkin: msg.skinId }));
       return;
     }
 
-    if (msg.t === 'join') {
-      const roomCode = String(msg.room || 'default').toUpperCase().slice(0,6);
-      const name = String(msg.name || 'Игрок').slice(0,16);
+    if (msg.t === 'join'){
+      const name = String(msg.name||'Игрок').slice(0,16);
       const prof = getProfile(name);
-      if (!prof) { ws.send(JSON.stringify({ t:'error', message:'Сначала войдите' })); return; }
-      const skinId = prof.activeSkin;
-      const w = makeWorm(name, skinColor(skinId));
-      w.skin = skinId; w.room = roomCode;
+      if (!prof){ ws.send(JSON.stringify({ t:'error', message:'Сначала войдите' })); return; }
+      const w = makeWorm(name, prof.activeSkin);
       worms[w.id] = w;
-      clients.set(ws, { wormId: w.id, roomCode, name });
-      if (!rooms[roomCode]) rooms[roomCode] = new Set();
-      rooms[roomCode].add(w.id);
-      ws.send(JSON.stringify({ t:'joined', id:w.id, room:roomCode, world:{ w:WORLD_W, h:WORLD_H } }));
+      clients.set(ws, { wormId: w.id, name });
+      ws.send(JSON.stringify({ t:'joined', id:w.id, world:{ w:WORLD_W, h:WORLD_H } }));
       broadcastLeaderboard();
       return;
     }
 
-    if (msg.t === 'input') {
+    if (msg.t === 'input'){
       const c = clients.get(ws);
       if (!c) return;
       const w = worms[c.wormId];
@@ -346,19 +336,17 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    if (msg.t === 'respawn') {
+    if (msg.t === 'respawn'){
       const c = clients.get(ws);
       if (!c) return;
       const old = worms[c.wormId];
       if (!old) return;
       const prof = getProfile(old.name);
       const skinId = prof ? prof.activeSkin : 'classic';
-      const w = makeWorm(old.name, skinColor(skinId));
-      w.skin = skinId; w.room = old.room;
+      const w = makeWorm(old.name, skinId);
       delete worms[old.id];
       worms[w.id] = w;
-      clients.set(ws, { wormId: w.id, roomCode: old.room, name: old.name });
-      if (rooms[old.room]) { rooms[old.room].delete(old.id); rooms[old.room].add(w.id); }
+      clients.set(ws, { wormId: w.id, name: old.name });
       ws.send(JSON.stringify({ t:'respawned', id: w.id }));
       broadcastLeaderboard();
       return;
@@ -367,10 +355,7 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     const c = clients.get(ws);
-    if (c) {
-      delete worms[c.wormId];
-      if (rooms[c.roomCode]) rooms[c.roomCode].delete(c.wormId);
-    }
+    if (c){ delete worms[c.wormId]; }
     clients.delete(ws);
     broadcastLeaderboard();
   });
@@ -379,54 +364,51 @@ wss.on('connection', (ws) => {
 function broadcastLeaderboard(){
   const payload = JSON.stringify({ t:'leaderboard', list: leaderboard() });
   clients.forEach((c, ws) => {
-    if (ws.readyState === WebSocket.OPEN) { try { ws.send(payload); } catch(e){} }
+    if (ws.readyState === WebSocket.OPEN){ try { ws.send(payload); } catch(e){} }
   });
 }
 
 let lastTick = Date.now();
 setInterval(() => {
   const now = Date.now();
-  const dt = Math.min(0.1, (now - lastTick)/1000);
+  const dt = Math.min(0.1, (now-lastTick)/1000);
   lastTick = now;
-  for (const id in worms) {
+  for (const id in worms){
     const w = worms[id];
-    if (w.alive) { updateWorm(w, dt); eatCheck(w); }
+    if (w.alive){ updateWorm(w, dt); eatCheck(w); }
   }
   checkCollisions();
-  const roomStates = {};
-  for (const code in rooms) {
-    const list = [];
-    rooms[code].forEach(id => {
-      const w = worms[id];
-      if (!w) return;
-      list.push({
-        id: w.id, name: w.name, color: w.color,
-        x: Math.round(w.x*10)/10, y: Math.round(w.y*10)/10,
-        angle: Math.round(w.angle*1000)/1000,
-        score: w.score, alive: w.alive,
-        radius: Math.round(w.radius*10)/10,
-        boosting: w.boosting, kills: w.kills,
-        segments: w.segments.slice(0, 80).map(s => [Math.round(s.x*10)/10, Math.round(s.y*10)/10])
-      });
+
+  const wormList = [];
+  for (const id in worms){
+    const w = worms[id];
+    wormList.push({
+      id: w.id, name: w.name, skin: w.skin, color: w.color,
+      x: Math.round(w.x*10)/10, y: Math.round(w.y*10)/10,
+      angle: Math.round(w.angle*1000)/1000,
+      score: w.score, alive: w.alive,
+      radius: Math.round(w.radius*10)/10,
+      boosting: w.boosting, kills: w.kills,
+      segments: w.segments.slice(0,80).map(s => [Math.round(s.x*10)/10, Math.round(s.y*10)/10])
     });
-    roomStates[code] = list;
   }
   const foodPayload = foods.map(f => [Math.round(f.x), Math.round(f.y), Math.round(f.r*10)/10, f.color, f.type]);
+
   clients.forEach((c, ws) => {
     if (ws.readyState !== WebSocket.OPEN) return;
     const myWorm = worms[c.wormId];
     const state = {
-      t: 'state',
+      t:'state',
       me: myWorm ? {
         id: myWorm.id, x: Math.round(myWorm.x*10)/10, y: Math.round(myWorm.y*10)/10,
         angle: myWorm.angle, score: myWorm.score, alive: myWorm.alive,
         radius: myWorm.radius, boosting: myWorm.boosting,
         boostFuel: Math.round(myWorm.boostFuel),
         kills: myWorm.kills, length: myWorm.length,
-        color: myWorm.color,
-        segments: myWorm.segments.slice(0, 80).map(s => [Math.round(s.x*10)/10, Math.round(s.y*10)/10])
+        skin: myWorm.skin, color: myWorm.color,
+        segments: myWorm.segments.slice(0,80).map(s => [Math.round(s.x*10)/10, Math.round(s.y*10)/10])
       } : null,
-      worms: (roomStates[c.roomCode] || []).filter(w => w.id !== c.wormId),
+      worms: wormList.filter(w => w.id !== c.wormId),
       food: foodPayload,
       world: { w: WORLD_W, h: WORLD_H }
     };
