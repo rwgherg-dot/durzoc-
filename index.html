@@ -1,1 +1,451 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>🐛 Worms Online</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:#05060f;font-family:Arial,sans-serif;color:#fff;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+  #wrap{position:fixed;inset:0}
+  canvas{display:block;touch-action:none}
+  #hud{position:fixed;top:0;left:0;right:0;padding:12px 16px;display:flex;justify-content:space-between;pointer-events:none;z-index:5;font-size:14px;font-variant-numeric:tabular-nums}
+  .panel{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:8px 14px}
+  .label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#6a7a9a;margin-bottom:2px}
+  .value{font-size:20px;font-weight:800;line-height:1;color:#7CFFB2}
+  #boostBar{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);width:220px;height:10px;background:rgba(255,255,255,.1);border-radius:10px;overflow:hidden;z-index:5}
+  #boostFill{height:100%;width:100%;background:linear-gradient(90deg,#7CFFB2,#4ecca3);transition:width .1s}
+  #overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;z-index:10;background:rgba(5,6,15,.95);opacity:0;pointer-events:none;transition:opacity .4s;overflow-y:auto}
+  #overlay.show{opacity:1;pointer-events:auto}
+  .ov-card{max-width:440px;width:100%}
+  .ov-emoji{font-size:56px;margin-bottom:8px;display:block}
+  .ov-title{font-size:26px;font-weight:800;margin-bottom:6px;color:#7CFFB2}
+  .ov-title.dead{color:#ff6b6b}
+  .ov-sub{font-size:14px;color:#8892aa;margin-bottom:18px;line-height:1.5}
+  .btn{font-family:inherit;font-size:16px;font-weight:700;color:#05060f;background:#4ecca3;border:none;border-radius:100px;padding:14px 32px;cursor:pointer;box-shadow:0 8px 32px rgba(78,204,163,.4);margin:4px;-webkit-tap-highlight-color:transparent}
+  .btn:active{transform:scale(.96)}
+  .btn.ghost{background:transparent;color:#7CFFB2;border:2px solid #4ecca3;box-shadow:none}
+  .input{width:100%;font-family:inherit;font-size:20px;font-weight:800;text-align:center;background:rgba(255,255,255,.06);border:2px solid rgba(124,255,178,.3);border-radius:14px;padding:14px;color:#fff;margin-bottom:12px;outline:none}
+  .input:focus{border-color:#7CFFB2}
+  .row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+  .code-big{font-size:38px;font-weight:900;letter-spacing:6px;color:#7CFFB2;background:rgba(124,255,178,.08);border:2px dashed rgba(124,255,178,.4);border-radius:16px;padding:16px;margin:12px 0;cursor:pointer}
+  .status{font-size:13px;color:#8892aa;margin-top:10px;min-height:18px;line-height:1.4}
+  .status.err{color:#ff6b6b}
+  .ov-hint{font-size:11px;color:#4a5570;margin-top:16px;line-height:1.5}
+  #boostBtn{position:fixed;right:24px;bottom:24px;width:80px;height:80px;border-radius:50%;background:rgba(124,255,178,.15);border:2px solid #7CFFB2;color:#7CFFB2;font-size:13px;font-weight:800;display:none;align-items:center;justify-content:center;z-index:5;user-select:none}
+  @media (max-width:600px){#boostBtn{display:flex}.ov-title{font-size:22px}}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game"></canvas></div>
+<div id="hud">
+  <div class="panel"><div class="label">Счёт</div><div class="value" id="scoreVal">0</div></div>
+  <div class="panel"><div class="label">Убийства</div><div class="value" id="killsVal">0</div></div>
+</div>
+<div id="boostBar"><div id="boostFill"></div></div>
+<div id="boostBtn">BOOST</div>
+<div id="overlay" class="show"><div class="ov-card" id="ovCard"></div></div>
 
+<script>
+(function(){
+  "use strict";
+
+  var canvas = document.getElementById("game");
+  var ctx = canvas.getContext("2d");
+  var scoreVal = document.getElementById("scoreVal");
+  var killsVal = document.getElementById("killsVal");
+  var boostFill = document.getElementById("boostFill");
+  var boostBtn = document.getElementById("boostBtn");
+  var overlay = document.getElementById("overlay");
+  var ovCard = document.getElementById("ovCard");
+
+  var viewW = 0, viewH = 0, DPR = 1;
+  var camX = 0, camY = 0;
+  var WORLD_W = 4000, WORLD_H = 4000;
+
+  var ws = null;
+  var myId = null;
+  var myWorm = null;
+  var others = [];
+  var foods = [];
+  var roomCode = "";
+  var connected = false;
+  var myName = "Игрок";
+  var targetAngle = 0;
+  var boosting = false;
+  var pointerX = 0, pointerY = 0, pointerActive = false;
+  var lastStateTime = 0;
+  var dead = false;
+
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio||1, 2);
+    viewW = window.innerWidth || document.documentElement.clientWidth;
+    viewH = window.innerHeight || document.documentElement.clientHeight;
+    canvas.width = viewW*DPR; canvas.height = viewH*DPR;
+    canvas.style.width = viewW+"px"; canvas.style.height = viewH+"px";
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener("resize", resize);
+
+  // === Управление ===
+  function onPointer(e){
+    var rect = canvas.getBoundingClientRect();
+    var t = e.touches ? e.touches[0] : e;
+    pointerX = t.clientX - rect.left;
+    pointerY = t.clientY - rect.top;
+    pointerActive = true;
+  }
+  canvas.addEventListener("mousemove", onPointer);
+  canvas.addEventListener("touchstart", function(e){ onPointer(e); e.preventDefault(); }, {passive:false});
+  canvas.addEventListener("touchmove", function(e){ onPointer(e); e.preventDefault(); }, {passive:false});
+
+  // Ускорение
+  function startBoost(){ boosting = true; }
+  function stopBoost(){ boosting = false; }
+  window.addEventListener("keydown", function(e){
+    var k = e.key ? e.key.toLowerCase() : "";
+    if (k === " " || k === "shift") { e.preventDefault(); startBoost(); }
+  });
+  window.addEventListener("keyup", function(e){
+    var k = e.key ? e.key.toLowerCase() : "";
+    if (k === " " || k === "shift") { e.preventDefault(); stopBoost(); }
+  });
+  canvas.addEventListener("mousedown", startBoost);
+  canvas.addEventListener("mouseup", stopBoost);
+  canvas.addEventListener("touchstart", function(e){ startBoost(); }, {passive:true});
+  canvas.addEventListener("touchend", function(e){ stopBoost(); }, {passive:true});
+  boostBtn.addEventListener("touchstart", function(e){ e.preventDefault(); startBoost(); }, {passive:false});
+  boostBtn.addEventListener("touchend", function(e){ e.preventDefault(); stopBoost(); }, {passive:false});
+  boostBtn.addEventListener("mousedown", startBoost);
+  boostBtn.addEventListener("mouseup", stopBoost);
+
+  // === Сеть ===
+  function connect(room, name){
+    roomCode = room;
+    myName = name;
+    var proto = location.protocol === "https:" ? "wss:" : "ws:";
+    var url = proto + "//" + location.host;
+    overlay.className = "show";
+    ovCard.innerHTML = '<span class="ov-emoji">⏳</span><div class="ov-title">Подключаемся...</div><div class="status" id="statusText"></div>';
+    try{
+      ws = new WebSocket(url);
+    }catch(e){
+      showError("Не удалось подключиться: " + e.message);
+      return;
+    }
+    ws.onopen = function(){
+      ws.send(JSON.stringify({ t: "join", room: room, name: name, color: "#7CFFB2" }));
+    };
+    ws.onmessage = function(ev){
+      var msg;
+      try{ msg = JSON.parse(ev.data); }catch(e){ return; }
+      if (msg.t === "joined"){
+        myId = msg.id;
+        connected = true;
+        WORLD_W = msg.world.w; WORLD_H = msg.world.h;
+        overlay.className = "";
+        dead = false;
+      } else if (msg.t === "respawned"){
+        myId = msg.id;
+        dead = false;
+        overlay.className = "";
+      } else if (msg.t === "state"){
+        lastStateTime = performance.now();
+        myWorm = msg.me;
+        others = msg.worms || [];
+        if (msg.food) foods = msg.food;
+        if (msg.world){ WORLD_W = msg.world.w; WORLD_H = msg.world.h; }
+        if (myWorm){
+          scoreVal.textContent = myWorm.score;
+          killsVal.textContent = myWorm.kills;
+          boostFill.style.width = Math.max(0, Math.min(100, myWorm.boostFuel)) + "%";
+          if (!myWorm.alive && !dead){
+            dead = true;
+            showGameOver(myWorm.score, myWorm.kills);
+          }
+        }
+      }
+    };
+    ws.onerror = function(){
+      showError("Ошибка соединения с сервером");
+    };
+    ws.onclose = function(){
+      connected = false;
+      if (myId) showError("Соединение закрыто");
+    };
+  }
+
+  function sendInput(){
+    if (!ws || ws.readyState !== WebSocket.OPEN || !myWorm || !myWorm.alive) return;
+    ws.send(JSON.stringify({ t: "input", angle: targetAngle, boost: boosting }));
+  }
+
+  // === Рендер ===
+  function drawWorld(now){
+    ctx.fillStyle = "#05060f"; ctx.fillRect(0,0,viewW,viewH);
+
+    if (myWorm && myWorm.alive){
+      var tcx = myWorm.x - viewW/2;
+      var tcy = myWorm.y - viewH/2;
+      camX += (tcx-camX)*0.18;
+      camY += (tcy-camY)*0.18;
+    }
+    camX = Math.max(0, Math.min(WORLD_W-viewW, camX));
+    camY = Math.max(0, Math.min(WORLD_H-viewH, camY));
+
+    ctx.save();
+    ctx.translate(-camX, -camY);
+
+    // Сетка карты
+    ctx.strokeStyle = "rgba(124,255,178,0.06)";
+    ctx.lineWidth = 1;
+    var grid = 80;
+    var sx = Math.floor(camX/grid)*grid;
+    var sy = Math.floor(camY/grid)*grid;
+    ctx.beginPath();
+    for (var x=sx;x<camX+viewW+grid;x+=grid){ ctx.moveTo(x,camY); ctx.lineTo(x,camY+viewH); }
+    for (var y=sy;y<camY+viewH+grid;y+=grid){ ctx.moveTo(camX,y); ctx.lineTo(camX+viewW,y); }
+    ctx.stroke();
+
+    // Границы мира
+    ctx.strokeStyle = "rgba(255,107,107,0.5)";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(0,0,WORLD_W,WORLD_H);
+
+    // Еда
+    for (var i=0;i<foods.length;i++){
+      var f = foods[i];
+      var fx = f[0], fy = f[1], fr = f[2], fc = f[3], ft = f[4];
+      if (fx<camX-40||fx>camX+viewW+40||fy<camY-40||fy>camY+viewH+40) continue;
+      var pulse = 1 + Math.sin(now*0.004 + (i*0.7))*0.2;
+      var r = fr*pulse;
+      var grd = ctx.createRadialGradient(fx,fy,0,fx,fy,r*3);
+      grd.addColorStop(0, fc+"aa");
+      grd.addColorStop(0.5, fc+"33");
+      grd.addColorStop(1, fc+"00");
+      ctx.fillStyle = grd;
+      ctx.beginPath(); ctx.arc(fx,fy,r*3,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = fc;
+      ctx.beginPath(); ctx.arc(fx,fy,r,0,Math.PI*2); ctx.fill();
+      if (ft === "golden"){
+        ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+        var aa = now*0.005;
+        ctx.beginPath(); ctx.arc(fx,fy,r+5,aa,aa+Math.PI*1.4); ctx.stroke();
+      } else if (ft === "bonus"){
+        ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(fx,fy,r+3,0,Math.PI*2); ctx.stroke();
+      }
+    }
+
+    // Другие черви
+    for (var k=0;k<others.length;k++){
+      drawWormBody(others[k], false);
+    }
+    // Я
+    if (myWorm){
+      drawWormBody(myWorm, true);
+    }
+
+    ctx.restore();
+
+    // Подписи над другими
+    for (var k2=0;k2<others.length;k2++){
+      var w2 = others[k2];
+      if (!w2.alive) continue;
+      var px = w2.x-camX, py = w2.y-camY;
+      if (px<-60||px>viewW+60||py<-60||py>viewH+60) continue;
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.font = "bold 13px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText(w2.name + " · " + w2.score, px, py - w2.radius - 10);
+    }
+  }
+
+  function drawWormBody(w, isMe){
+    if (!w.alive || !w.segments || w.segments.length < 2) return;
+    var segs = w.segments;
+    var color = w.color || "#7CFFB2";
+    var radius = w.radius || 14;
+
+    // Свечение при ускорении
+    if (w.boosting){
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 30;
+    }
+
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = isMe ? 20 : 12;
+    ctx.lineWidth = radius*2;
+    ctx.beginPath();
+    ctx.moveTo(segs[0][0], segs[0][1]);
+    for (var i=1;i<segs.length;i++){
+      ctx.lineTo(segs[i][0], segs[i][1]);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Внутренний светлый слой
+    ctx.strokeStyle = "rgba(255,255,255,0.3)";
+    ctx.lineWidth = radius*1.05;
+    ctx.stroke();
+
+    // Глаза
+    var hx = segs[0][0], hy = segs[0][1];
+    var angle = w.angle || 0;
+    var dirX = Math.cos(angle), dirY = Math.sin(angle);
+    var perpX = -dirY, perpY = dirX;
+    var eo = radius*0.5, fw = radius*0.4;
+    var e1x = hx+perpX*eo+dirX*fw, e1y = hy+perpY*eo+dirY*fw;
+    var e2x = hx-perpX*eo+dirX*fw, e2y = hy-perpY*eo+dirY*fw;
+    ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(e1x,e1y,radius*0.3,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(e2x,e2y,radius*0.3,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#0a0c1a";
+    ctx.beginPath(); ctx.arc(e1x+dirX*2,e1y+dirY*2,radius*0.15,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(e2x+dirX*2,e2y+dirY*2,radius*0.15,0,Math.PI*2); ctx.fill();
+  }
+
+  // === UI ===
+  function showMenuUI(){
+    overlay.className = "show";
+    ovCard.innerHTML =
+      '<span class="ov-emoji">🐛</span>' +
+      '<div class="ov-title">Worms Online</div>' +
+      '<div class="ov-sub">Собирай еду · ускоряйся пробелом · расти в длину и ширину<br>Убивай других, врезаясь в них головой</div>' +
+      '<input class="input" id="nameInput" maxlength="12" placeholder="ТВОЁ ИМЯ">' +
+      '<div class="row">' +
+        '<button class="btn" id="btnHost">Создать комнату</button>' +
+        '<button class="btn ghost" id="btnJoin">Войти по коду</button>' +
+      '</div>' +
+      '<div class="status" id="statusText"></div>' +
+      '<div class="ov-hint">Мышь / палец — поворот к курсору<br>Пробел / Shift / кнопка BOOST — ускорение</div>';
+    var ni = document.getElementById("nameInput");
+    try{ ni.value = localStorage.getItem("worms_name") || ""; }catch(e){}
+    ni.addEventListener("input", function(){
+      var v = ni.value.replace(/[^A-Za-zА-Яа-я0-9_ -]/g,"").slice(0,12);
+      ni.value = v;
+      try{ localStorage.setItem("worms_name", v); }catch(e){}
+    });
+    document.getElementById("btnHost").onclick = function(){
+      var n = (ni.value.trim() || "Хост").slice(0,12);
+      var code = genCode();
+      showRoomUI(code);
+      connect(code, n);
+    };
+    document.getElementById("btnJoin").onclick = function(){
+      showJoinUI(ni.value.trim());
+    };
+  }
+
+  function showJoinUI(name){
+    overlay.className = "show";
+    ovCard.innerHTML =
+      '<span class="ov-emoji">🔗</span>' +
+      '<div class="ov-title">Войти по коду</div>' +
+      '<div class="ov-sub">Код из 5 символов от друга</div>' +
+      '<input class="input" id="codeInput" maxlength="5" placeholder="КОД" autocomplete="off">' +
+      '<div class="row"><button class="btn" id="btnGo">Войти</button><button class="btn ghost" id="btnBack">Назад</button></div>' +
+      '<div class="status" id="statusText"></div>';
+    document.getElementById("btnBack").onclick = showMenuUI;
+    var inp = document.getElementById("codeInput");
+    inp.focus();
+    inp.addEventListener("input", function(){ inp.value = inp.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,5); });
+    document.getElementById("btnGo").onclick = function(){
+      var c = (inp.value||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+      if (c.length !== 5){ setStatus("Код — 5 символов", true); return; }
+      connect(c, name || "Гость");
+    };
+  }
+
+  function showRoomUI(code){
+    overlay.className = "show";
+    ovCard.innerHTML =
+      '<span class="ov-emoji">🎮</span>' +
+      '<div class="ov-title">Комната создана</div>' +
+      '<div class="ov-sub">Пришли этот код другу:</div>' +
+      '<div class="code-big" id="codeBig">' + code + '</div>' +
+      '<div class="ov-sub">Нажми, чтобы скопировать</div>' +
+      '<div class="status" id="statusText">Подключаемся к серверу...</div>';
+    var cb = document.getElementById("codeBig");
+    cb.onclick = function(){
+      try{
+        if (navigator.clipboard) navigator.clipboard.writeText(code);
+        else { var ta=document.createElement("textarea"); ta.value=code; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); }
+        cb.textContent = "Скопировано!";
+        setTimeout(function(){ cb.textContent = code; }, 1200);
+      }catch(e){}
+    };
+  }
+
+  function showGameOver(score, kills){
+    overlay.className = "show";
+    ovCard.innerHTML =
+      '<span class="ov-emoji">💀</span>' +
+      '<div class="ov-title dead">Ты врезался</div>' +
+      '<div class="ov-sub">Счёт: ' + score + '<br>Убийств: ' + kills + '</div>' +
+      '<div class="row">' +
+        '<button class="btn" id="btnRespawn">Возродиться</button>' +
+        '<button class="btn ghost" id="btnQuit">В меню</button>' +
+      '</div>';
+    document.getElementById("btnRespawn").onclick = function(){
+      if (ws && ws.readyState === WebSocket.OPEN){
+        ws.send(JSON.stringify({ t: "respawn" }));
+      }
+    };
+    document.getElementById("btnQuit").onclick = function(){
+      if (ws){ try{ ws.close(); }catch(e){} }
+      ws = null; myId = null; myWorm = null; others = []; foods = []; connected = false;
+      showMenuUI();
+    };
+  }
+
+  function showError(txt){
+    overlay.className = "show";
+    ovCard.innerHTML =
+      '<span class="ov-emoji">⚠️</span>' +
+      '<div class="ov-title dead">Ошибка</div>' +
+      '<div class="ov-sub">' + txt + '</div>' +
+      '<button class="btn" id="btnRetry">В меню</button>';
+    document.getElementById("btnRetry").onclick = function(){
+      if (ws){ try{ ws.close(); }catch(e){} }
+      ws = null; connected = false;
+      showMenuUI();
+    };
+  }
+
+  function setStatus(txt, isErr){
+    var el = document.getElementById("statusText");
+    if (!el) return;
+    el.textContent = txt || "";
+    el.className = "status" + (isErr ? " err" : "");
+  }
+
+  function genCode(){
+    var s = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789", out = "";
+    for (var i=0;i<5;i++) out += s[Math.floor(Math.random()*s.length)];
+    return out;
+  }
+
+  // === Главный цикл ===
+  function loop(now){
+    // Целевой угол
+    if (myWorm && myWorm.alive && pointerActive){
+      var wx = pointerX + camX;
+      var wy = pointerY + camY;
+      targetAngle = Math.atan2(wy - myWorm.y, wx - myWorm.x);
+    }
+    sendInput();
+    drawWorld(now);
+    requestAnimationFrame(loop);
+  }
+
+  resize();
+  showMenuUI();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
