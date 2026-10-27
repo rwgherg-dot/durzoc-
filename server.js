@@ -132,8 +132,10 @@ function normAng(a){ while(a>Math.PI)a-=Math.PI*2; while(a<-Math.PI)a+=Math.PI*2
 function updateWorm(w, dt){
   if (!w.alive) return;
   const diff = normAng(w.targetAngle - w.angle);
-  const maxTurn = 8.0*dt;
+  // Скорость поворота зависит от размера — большой червь поворачивает медленнее
+  const maxTurn = (7.5 - Math.min(2, w.radius * 0.04)) * dt;
   w.angle += Math.max(-maxTurn, Math.min(maxTurn, diff));
+
   let speed = w.baseSpeed;
   if (w.boosting && w.boostFuel > 0){
     speed *= 1.9;
@@ -142,19 +144,49 @@ function updateWorm(w, dt){
   } else {
     w.boostFuel = Math.min(100, w.boostFuel + 15*dt);
   }
+  // Чем больше радиус — тем медленнее
+  speed *= 1 / (1 + (w.radius - 14) * 0.02);
   w.speed = speed;
-  w.x += Math.cos(w.angle)*speed*dt;
-  w.y += Math.sin(w.angle)*speed*dt;
-  if (w.x < w.radius){ w.x=w.radius; w.angle=Math.PI-w.angle; w.targetAngle=w.angle; }
-  if (w.x > WORLD_W-w.radius){ w.x=WORLD_W-w.radius; w.angle=Math.PI-w.angle; w.targetAngle=w.angle; }
-  if (w.y < w.radius){ w.y=w.radius; w.angle=-w.angle; w.targetAngle=w.angle; }
-  if (w.y > WORLD_H-w.radius){ w.y=WORLD_H-w.radius; w.angle=-w.angle; w.targetAngle=w.angle; }
-  w.segments.unshift({ x: w.x, y: w.y });
+
+  w.x += Math.cos(w.angle) * speed * dt;
+  w.y += Math.sin(w.angle) * speed * dt;
+
+  if (w.x < w.radius){ w.x = w.radius; w.angle = Math.PI - w.angle; w.targetAngle = w.angle; }
+  if (w.x > WORLD_W - w.radius){ w.x = WORLD_W - w.radius; w.angle = Math.PI - w.angle; w.targetAngle = w.angle; }
+  if (w.y < w.radius){ w.y = w.radius; w.angle = -w.angle; w.targetAngle = w.angle; }
+  if (w.y > WORLD_H - w.radius){ w.y = WORLD_H - w.radius; w.angle = -w.angle; w.targetAngle = w.angle; }
+
+  // Подгоняем длину сегментов
   const targetLen = Math.floor(w.length);
   while (w.segments.length > targetLen) w.segments.pop();
   while (w.segments.length < targetLen){
-    const last = w.segments[w.segments.length-1] || { x:w.x, y:w.y };
-    w.segments.push({ x:last.x, y:last.y });
+    const last = w.segments[w.segments.length-1] || { x: w.x, y: w.y };
+    w.segments.push({ x: last.x, y: last.y });
+  }
+
+  // === Физика цепочки ===
+  // Голова — это сегмент 0
+  w.segments[0].x = w.x;
+  w.segments[0].y = w.y;
+
+  // Каждый следующий сегмент тянется за предыдущим на расстояние gap
+  const gap = w.gap;
+  for (let i = 1; i < w.segments.length; i++){
+    const prev = w.segments[i-1];
+    const cur = w.segments[i];
+    let dx = cur.x - prev.x;
+    let dy = cur.y - prev.y;
+    let dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < 0.001){
+      dx = -Math.cos(w.angle);
+      dy = -Math.sin(w.angle);
+      dist = 1;
+    }
+    const targetX = prev.x + (dx/dist) * gap;
+    const targetY = prev.y + (dy/dist) * gap;
+    // Плавное подтягивание — «резиновая» плавность
+    cur.x += (targetX - cur.x) * 0.55;
+    cur.y += (targetY - cur.y) * 0.55;
   }
 }
 
