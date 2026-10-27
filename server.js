@@ -239,6 +239,11 @@ wss.on('connection', (ws) => {
     try { msg = JSON.parse(raw); } catch(e){ return; }
     if (!msg || !msg.t) return;
 
+    if (msg.t === 'ping'){
+      ws.send(JSON.stringify({ t: 'pong', ts: msg.ts }));
+      return;
+    }
+
     if (msg.t === 'register'){
       const name = String(msg.name||'').trim().slice(0,16);
       const pass = String(msg.password||'').slice(0,40);
