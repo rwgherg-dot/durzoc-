@@ -66,11 +66,13 @@
   .case-result{font-size:15px;line-height:1.5;margin:12px 0;padding:16px;border-radius:14px;background:rgba(124,255,178,.08);border:1px solid rgba(124,255,178,.3)}
   .checkbox-row{display:flex;align-items:center;justify-content:center;gap:8px;margin:8px 0 14px;font-size:13px;color:#8892aa}
   .checkbox-row input{width:18px;height:18px;accent-color:#4ecca3}
+  .case-anim{display:flex;justify-content:center;gap:6px;margin:16px 0}
+  .case-anim .cell{width:34px;height:34px;border-radius:8px;background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;transition:all .15s}
+  .case-anim .cell.on{background:#4ecca3;color:#05060f;border-color:#7CFFB2;transform:scale(1.15)}
 </style>
 </head>
 <body>
 <div id="wrap"><canvas id="game"></canvas></div>
-
 <div id="leftHud">
   <div class="panel" id="scorePanel">
     <div class="col"><div class="label">Счёт</div><div class="value" id="scoreVal">0</div></div>
@@ -85,7 +87,6 @@
     <div id="leaderList"></div>
   </div>
 </div>
-
 <div id="boostBar"><div id="boostFill"></div></div>
 <div id="boostBtn">BOOST</div>
 <div id="overlay" class="show"><div class="ov-card" id="ovCard"></div></div>
@@ -93,7 +94,6 @@
 <script>
 (function(){
   "use strict";
-
   var canvas = document.getElementById("game");
   var ctx = canvas.getContext("2d");
   var mapCanvas = document.getElementById("mapCanvas");
@@ -106,22 +106,21 @@
   var overlay = document.getElementById("overlay");
   var ovCard = document.getElementById("ovCard");
 
-  var viewW = 0, viewH = 0, DPR = 1;
-  var camX = 0, camY = 0;
-  var WORLD_W = 4000, WORLD_H = 4000;
+  var viewW=0, viewH=0, DPR=1;
+  var camX=0, camY=0;
+  var WORLD_W=4000, WORLD_H=4000;
 
-  var ws = null;
-  var myId = null;
-  var myWorm = null;
-  var others = [];
-  var foods = [];
-  var roomCode = "";
-  var myName = "";
-  var targetAngle = 0;
-  var boosting = false;
-  var pointerX = 0, pointerY = 0, pointerActive = false;
-  var dead = false;
-  var profile = null;
+  var ws=null, myId=null, myWorm=null;
+  var others=[], foods=[];
+  var roomCode="", myName="", targetAngle=0, boosting=false;
+  var pointerX=0, pointerY=0, pointerActive=false;
+  var dead=false, profile=null;
+
+  // Интерполяция: храним предыдущее и текущее состояние, рисуем с задержкой
+  var renderDelay = 0.08; // 80 мс назад
+  var meHistory = [];
+  var othersHistory = {};
+  var foodHistory = [];
 
   function resize(){
     DPR = Math.min(window.devicePixelRatio||1, 2);
@@ -170,77 +169,133 @@
     ws.onopen = function(){
       var remembered = null;
       try { remembered = localStorage.getItem("worms_saved_name"); } catch(e){}
-      if (remembered) {
-        ws.send(JSON.stringify({ t: "profile", name: remembered }));
-      }
+      if (remembered) ws.send(JSON.stringify({ t: "profile", name: remembered }));
     };
     ws.onmessage = onMessage;
-    ws.onerror = function(){};
     ws.onclose = function(){ setTimeout(wsConnect, 2000); };
   }
 
   function onMessage(ev){
     var msg;
-    try{ msg = JSON.parse(ev.data); }catch(e){ return; }
-    if (msg.t === "authOk"){
-      myName = msg.name;
-      return;
-    }
-    if (msg.t === "authError"){
-      setStatus(msg.message || "Ошибка", true);
-      return;
-    }
-    if (msg.t === "profile"){
-      profile = msg;
-      myName = msg.name;
-      showProfileUI();
-      return;
-    }
-    if (msg.t === "leaderboard"){
-      renderLeaderboard(msg.list || []);
-      return;
-    }
-    if (msg.t === "caseResult"){
-      if (msg.error){ showCaseResult(msg.error, null); }
+    try { msg = JSON.parse(ev.data); } catch(e){ return; }
+    if (msg.t === "authOk") { myName = msg.name; return; }
+    if (msg.t === "authError") { setStatus(msg.message, true); return; }
+    if (msg.t === "pwdOk") { setStatus("Пароль изменён", false); return; }
+    if (msg.t === "pwdError") { setStatus(msg.message, true); return; }
+    if (msg.t === "profile") { profile = msg; myName = msg.name; showProfileUI(); return; }
+    if (msg.t === "leaderboard") { renderLeaderboard(msg.list || []); return; }
+    if (msg.t === "caseResult") {
+      if (msg.error) { showCaseResult(msg.error, null); }
       else {
-        if (profile){ profile.coins = msg.coins; profile.skins = msg.skins; }
-        showCaseResult(null, msg);
+        if (profile) { profile.coins = msg.coins; profile.skins = msg.skins; }
+        animateCase(msg.skinId, msg.alreadyOwned, msg.refund);
       }
       return;
     }
-    if (msg.t === "skinSet"){
-      if (profile) profile.activeSkin = msg.activeSkin;
-      showProfileUI();
-      return;
-    }
-    if (msg.t === "joined"){
-      myId = msg.id; WORLD_W = msg.world.w; WORLD_H = msg.world.h;
-      overlay.className = ""; dead = false;
-      return;
-    }
-    if (msg.t === "respawned"){
-      myId = msg.id; dead = false; overlay.className = "";
-      return;
-    }
-    if (msg.t === "error"){
-      setStatus(msg.message || "Ошибка", true);
-      return;
-    }
-    if (msg.t === "state"){
-      myWorm = msg.me;
+    if (msg.t === "skinSet") { if (profile) profile.activeSkin = msg.activeSkin; showProfileUI(); return; }
+    if (msg.t === "joined") { myId = msg.id; WORLD_W = msg.world.w; WORLD_H = msg.world.h; overlay.className = ""; dead = false; meHistory = []; return; }
+    if (msg.t === "respawned") { myId = msg.id; dead = false; overlay.className = ""; meHistory = []; return; }
+    if (msg.t === "error") { setStatus(msg.message, true); return; }
+    if (msg.t === "state") {
+      var now = performance.now()/1000;
+      if (msg.me) {
+        meHistory.push({ t: now, data: msg.me });
+        while (meHistory.length > 20) meHistory.shift();
+      }
       others = msg.worms || [];
       if (msg.food) foods = msg.food;
-      if (msg.world){ WORLD_W = msg.world.w; WORLD_H = msg.world.h; }
-      if (myWorm){
+      if (msg.world) { WORLD_W = msg.world.w; WORLD_H = msg.world.h; }
+      if (msg.me) {
+        myWorm = msg.me;
         scoreVal.textContent = myWorm.score;
         killsVal.textContent = myWorm.kills;
         boostFill.style.width = Math.max(0, Math.min(100, myWorm.boostFuel)) + "%";
-        if (!myWorm.alive && !dead){
-          dead = true;
-          showGameOver(myWorm.score, myWorm.kills);
-        }
+        if (!myWorm.alive && !dead) { dead = true; showGameOver(myWorm.score, myWorm.kills); }
       }
     }
+  }
+
+  // Получаем состояние из истории на момент (now - renderDelay)
+  function getInterpolatedMe(){
+    if (!meHistory.length) return null;
+    var target = performance.now()/1000 - renderDelay;
+    if (target <= meHistory[0].t) return meHistory[0].data;
+    if (target >= meHistory[meHistory.length-1].t) return meHistory[meHistory.length-1].data;
+    for (var i=0;i<meHistory.length-1;i++){
+      var a = meHistory[i], b = meHistory[i+1];
+      if (target >= a.t && target <= b.t){
+        var f = (target - a.t) / (b.t - a.t || 1);
+        return lerpState(a.data, b.data, f);
+      }
+    }
+    return meHistory[meHistory.length-1].data;
+  }
+
+  function lerpState(a, b, f){
+    var out = { id: b.id, color: b.color, alive: b.alive, angle: b.angle,
+      score: b.score, kills: b.kills, boostFuel: b.boostFuel,
+      radius: a.radius + (b.radius - a.radius)*f,
+      x: a.x + (b.x - a.x)*f,
+      y: a.y + (b.y - a.y)*f,
+      segments: [] };
+    var n = Math.min(a.segments.length, b.segments.length);
+    for (var i=0;i<n;i++){
+      out.segments.push([
+        a.segments[i][0] + (b.segments[i][0] - a.segments[i][0])*f,
+        a.segments[i][1] + (b.segments[i][1] - a.segments[i][1])*f
+      ]);
+    }
+    return out;
+  }
+
+  function lerpOther(a, b, f){
+    var out = { id: b.id, name: b.name, color: b.color, alive: b.alive, angle: b.angle,
+      score: b.score, kills: b.kills,
+      radius: a.radius + (b.radius - a.radius)*f,
+      x: a.x + (b.x - a.x)*f,
+      y: a.y + (b.y - a.y)*f,
+      segments: [] };
+    var n = Math.min(a.segments.length, b.segments.length);
+    for (var i=0;i<n;i++){
+      out.segments.push([
+        a.segments[i][0] + (b.segments[i][0] - a.segments[i][0])*f,
+        a.segments[i][1] + (b.segments[i][1] - a.segments[i][1])*f
+      ]);
+    }
+    return out;
+  }
+
+  // Для других храним историю по id
+  var othersPrev = {};
+  var othersCurr = {};
+  var othersLastTime = 0;
+  var othersNextTime = 0;
+
+  function updateOthersInterp(newList, now){
+    var newMap = {};
+    for (var i=0;i<newList.length;i++) newMap[newList[i].id] = newList[i];
+    othersPrev = othersCurr;
+    othersCurr = newMap;
+    othersLastTime = othersNextTime || now;
+    othersNextTime = now;
+  }
+
+  function getInterpolatedOthers(now){
+    if (!othersNextTime || !othersLastTime || othersNextTime === othersLastTime) {
+      return Object.values(othersCurr);
+    }
+    var target = now - renderDelay;
+    var f = (target - othersLastTime) / (othersNextTime - othersLastTime);
+    if (f < 0) f = 0;
+    if (f > 1) f = 1;
+    var out = [];
+    for (var id in othersCurr) {
+      var b = othersCurr[id];
+      var a = othersPrev[id];
+      if (!a) { out.push(b); continue; }
+      out.push(lerpOther(a, b, f));
+    }
+    return out;
   }
 
   function sendInput(){
@@ -258,11 +313,15 @@
     leaderList.innerHTML = html || '<div style="color:#4a5570;font-size:11px">Пока никого</div>';
   }
 
-  function drawWorld(now){
+  function drawWorld(nowSec){
+    var nowMs = performance.now();
+    var interpMe = getInterpolatedMe();
+    var interpOthers = getInterpolatedOthers(nowMs);
+
     ctx.fillStyle = "#05060f"; ctx.fillRect(0,0,viewW,viewH);
-    if (myWorm && myWorm.alive){
-      var tcx = myWorm.x - viewW/2;
-      var tcy = myWorm.y - viewH/2;
+    if (interpMe && interpMe.alive){
+      var tcx = interpMe.x - viewW/2;
+      var tcy = interpMe.y - viewH/2;
       camX += (tcx-camX)*0.18;
       camY += (tcy-camY)*0.18;
     }
@@ -289,19 +348,17 @@
       var f = foods[i];
       var fx = f[0], fy = f[1], fr = f[2], fc = f[3], ft = f[4];
       if (fx<camX-40||fx>camX+viewW+40||fy<camY-40||fy>camY+viewH+40) continue;
-      var pulse = 1 + Math.sin(now*0.004 + (i*0.7))*0.2;
+      var pulse = 1 + Math.sin(nowSec*4 + (i*0.7))*0.2;
       var r = fr*pulse;
       var grd = ctx.createRadialGradient(fx,fy,0,fx,fy,r*3);
-      grd.addColorStop(0, fc+"aa");
-      grd.addColorStop(0.5, fc+"33");
-      grd.addColorStop(1, fc+"00");
+      grd.addColorStop(0, fc+"aa"); grd.addColorStop(0.5, fc+"33"); grd.addColorStop(1, fc+"00");
       ctx.fillStyle = grd;
       ctx.beginPath(); ctx.arc(fx,fy,r*3,0,Math.PI*2); ctx.fill();
       ctx.fillStyle = fc;
       ctx.beginPath(); ctx.arc(fx,fy,r,0,Math.PI*2); ctx.fill();
       if (ft === "golden"){
         ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
-        var aa = now*0.005;
+        var aa = nowSec*5;
         ctx.beginPath(); ctx.arc(fx,fy,r+5,aa,aa+Math.PI*1.4); ctx.stroke();
       } else if (ft === "bonus"){
         ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 1.5;
@@ -309,12 +366,12 @@
       }
     }
 
-    for (var k=0;k<others.length;k++) drawWormBody(others[k], false);
-    if (myWorm) drawWormBody(myWorm, true);
+    for (var k=0;k<interpOthers.length;k++) drawWormBody(interpOthers[k], false);
+    if (interpMe) drawWormBody(interpMe, true);
     ctx.restore();
 
-    for (var k2=0;k2<others.length;k2++){
-      var w2 = others[k2];
+    for (var k2=0;k2<interpOthers.length;k2++){
+      var w2 = interpOthers[k2];
       if (!w2.alive) continue;
       var px = w2.x-camX, py = w2.y-camY;
       if (px<-60||px>viewW+60||py<-60||py>viewH+60) continue;
@@ -324,19 +381,14 @@
       ctx.fillText(w2.name + " - " + w2.score, px, py - w2.radius - 10);
     }
 
-    drawMinimap();
+    drawMinimap(interpMe, interpOthers);
   }
 
   function drawWormBody(w, isMe){
     if (!w.alive || !w.segments || w.segments.length < 2) return;
-    var segs = w.segments;
-    var color = w.color || "#7CFFB2";
-    var radius = w.radius || 14;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = color;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = isMe ? 20 : 12;
+    var segs = w.segments, color = w.color || "#7CFFB2", radius = w.radius || 14;
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.strokeStyle = color; ctx.shadowColor = color; ctx.shadowBlur = isMe ? 20 : 12;
     ctx.lineWidth = radius*2;
     ctx.beginPath();
     ctx.moveTo(segs[0][0], segs[0][1]);
@@ -346,9 +398,7 @@
     ctx.strokeStyle = "rgba(255,255,255,0.3)";
     ctx.lineWidth = radius*1.05;
     ctx.stroke();
-
-    var hx = segs[0][0], hy = segs[0][1];
-    var angle = w.angle || 0;
+    var hx = segs[0][0], hy = segs[0][1], angle = w.angle || 0;
     var dirX = Math.cos(angle), dirY = Math.sin(angle);
     var perpX = -dirY, perpY = dirX;
     var eo = radius*0.5, fw = radius*0.4;
@@ -362,7 +412,7 @@
     ctx.beginPath(); ctx.arc(e2x+dirX*2,e2y+dirY*2,radius*0.15,0,Math.PI*2); ctx.fill();
   }
 
-  function drawMinimap(){
+  function drawMinimap(interpMe, interpOthers){
     var mw = mapCanvas.width, mh = mapCanvas.height;
     mapCtx.clearRect(0,0,mw,mh);
     mapCtx.fillStyle = "#0a0c1a";
@@ -370,24 +420,23 @@
     mapCtx.strokeStyle = "rgba(124,255,178,0.2)";
     mapCtx.lineWidth = 1;
     mapCtx.strokeRect(0.5,0.5,mw-1,mh-1);
-    var sx = mw / WORLD_W, sy = mh / WORLD_H;
-    for (var i=0;i<others.length;i++){
-      var w = others[i];
+    var sx = mw/WORLD_W, sy = mh/WORLD_H;
+    for (var i=0;i<interpOthers.length;i++){
+      var w = interpOthers[i];
       if (!w.alive) continue;
       mapCtx.fillStyle = w.color || "#ff9f1c";
       mapCtx.beginPath();
       mapCtx.arc(w.x*sx, w.y*sy, 3, 0, Math.PI*2);
       mapCtx.fill();
     }
-    if (myWorm && myWorm.alive){
+    if (interpMe && interpMe.alive){
       mapCtx.fillStyle = "#fff";
       mapCtx.beginPath();
-      mapCtx.arc(myWorm.x*sx, myWorm.y*sy, 4, 0, Math.PI*2);
+      mapCtx.arc(interpMe.x*sx, interpMe.y*sy, 4, 0, Math.PI*2);
       mapCtx.fill();
     }
   }
 
-  // === Экраны ===
   function showIntroUI(){
     overlay.className = "show";
     ovCard.innerHTML =
@@ -397,7 +446,7 @@
         '<button class="btn" id="btnLogin">Войти</button>' +
         '<button class="btn ghost" id="btnRegister">Регистрация</button>' +
       '</div>' +
-      '<div class="ov-hint">Мышь или палец - поворот. Пробел - ускорение.</div>';
+      '<div class="ov-hint">Мышь или палец - поворот. Пробел / Shift - ускорение.</div>';
     document.getElementById("btnLogin").onclick = showLoginUI;
     document.getElementById("btnRegister").onclick = showRegisterUI;
   }
@@ -417,19 +466,17 @@
     var rm = document.getElementById("rememberMe");
     try{
       var saved = localStorage.getItem("worms_saved_name");
-      if (saved){ nm.value = saved; rm.checked = true; }
+      if (saved) { nm.value = saved; rm.checked = true; }
     }catch(e){}
     document.getElementById("btnDoLogin").onclick = function(){
       var n = (nm.value||"").trim();
       var p = ps.value || "";
-      if (!n || !p){ setStatus("Введите имя и пароль", true); return; }
+      if (!n || !p) { setStatus("Введите имя и пароль", true); return; }
       try{
         if (rm.checked) localStorage.setItem("worms_saved_name", n);
         else localStorage.removeItem("worms_saved_name");
       }catch(e){}
-      if (ws && ws.readyState === 1){
-        ws.send(JSON.stringify({ t: "login", name: n, password: p }));
-      }
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "login", name: n, password: p }));
     };
   }
 
@@ -446,10 +493,8 @@
     document.getElementById("btnDoReg").onclick = function(){
       var n = (document.getElementById("regName").value||"").trim();
       var p = document.getElementById("regPass").value || "";
-      if (!n || !p){ setStatus("Введите имя и пароль", true); return; }
-      if (ws && ws.readyState === 1){
-        ws.send(JSON.stringify({ t: "register", name: n, password: p }));
-      }
+      if (!n || !p) { setStatus("Введите имя и пароль", true); return; }
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "register", name: n, password: p }));
     };
   }
 
@@ -480,6 +525,7 @@
       '<div class="row" style="margin-bottom:12px">' +
         '<button class="btn" id="btnPlay">Играть</button>' +
         '<button class="btn ghost" id="btnCases">Кейсы</button>' +
+        '<button class="btn ghost" id="btnPwd">Пароль</button>' +
         '<button class="btn ghost" id="btnLogout">Выйти</button>' +
       '</div>' +
       '<div style="font-size:13px;color:#8892aa;text-align:left;margin-bottom:6px">Мои скины:</div>' +
@@ -487,6 +533,7 @@
       '<div class="status" id="statusText"></div>';
     document.getElementById("btnPlay").onclick = showPlayUI;
     document.getElementById("btnCases").onclick = showCasesUI;
+    document.getElementById("btnPwd").onclick = showPasswordUI;
     document.getElementById("btnLogout").onclick = function(){
       try{ localStorage.removeItem("worms_saved_name"); }catch(e){}
       profile = null; myName = "";
@@ -496,11 +543,26 @@
     for (var c=0;c<cellsEl.length;c++){
       cellsEl[c].onclick = function(){
         var sid = this.getAttribute("data-skin");
-        if (ws && ws.readyState === 1){
-          ws.send(JSON.stringify({ t: "setSkin", name: myName, skinId: sid, wormId: myId }));
-        }
+        if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "setSkin", name: myName, skinId: sid, wormId: myId }));
       };
     }
+  }
+
+  function showPasswordUI(){
+    overlay.className = "show";
+    ovCard.innerHTML =
+      '<div class="ov-title">Смена пароля</div>' +
+      '<input class="input" id="oldPass" type="password" maxlength="40" placeholder="СТАРЫЙ ПАРОЛЬ">' +
+      '<input class="input" id="newPass" type="password" maxlength="40" placeholder="НОВЫЙ ПАРОЛЬ">' +
+      '<div class="row"><button class="btn" id="btnDoPwd">Сохранить</button><button class="btn ghost" id="btnBack">Назад</button></div>' +
+      '<div class="status" id="statusText"></div>';
+    document.getElementById("btnBack").onclick = showProfileUI;
+    document.getElementById("btnDoPwd").onclick = function(){
+      var op = document.getElementById("oldPass").value || "";
+      var np = document.getElementById("newPass").value || "";
+      if (!op || !np) { setStatus("Заполните поля", true); return; }
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "changePassword", name: myName, oldPassword: op, newPassword: np }));
+    };
   }
 
   function showCasesUI(){
@@ -524,27 +586,49 @@
     for (var c=0;c<cards.length;c++){
       cards[c].onclick = function(){
         var cid = this.getAttribute("data-case");
-        if (ws && ws.readyState === 1){
-          ws.send(JSON.stringify({ t: "openCase", name: myName, caseId: cid }));
-        }
+        if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "openCase", name: myName, caseId: cid }));
       };
     }
+  }
+
+  function animateCase(skinId, alreadyOwned, refund){
+    var wrap = document.getElementById("caseResultWrap");
+    if (!wrap) return;
+    // Анимация: полоса из 12 ячеек, где одна "выпадает"
+    var cells = 12;
+    var html = '<div class="case-anim" id="caseAnim">';
+    for (var i=0;i<cells;i++) html += '<div class="cell" data-i="'+i+'">?</div>';
+    html += '</div><div class="case-result" id="caseFinal" style="display:none"></div>';
+    wrap.innerHTML = html;
+    var animEl = document.getElementById("caseAnim");
+    var finalEl = document.getElementById("caseFinal");
+    var cellEls = animEl.querySelectorAll(".cell");
+    var step = 0;
+    var sk = null;
+    for (var j=0;j<profile.allSkins.length;j++) if (profile.allSkins[j].id === skinId) sk = profile.allSkins[j];
+    var winnerIdx = Math.floor(Math.random()*cells);
+    var interval = setInterval(function(){
+      for (var k=0;k<cellEls.length;k++) cellEls[k].classList.remove("on");
+      cellEls[step % cells].classList.add("on");
+      step++;
+      if (step >= cells * 2 + winnerIdx) {
+        clearInterval(interval);
+        for (var m=0;m<cellEls.length;m++) cellEls[m].classList.remove("on");
+        cellEls[winnerIdx].classList.add("on");
+        var txt = sk ? ('Выпал скин: ' + sk.name + ' (' + sk.rarity + ')') : 'Скин получен';
+        if (alreadyOwned) txt += ' - уже был, компенсация ' + refund;
+        finalEl.textContent = txt;
+        finalEl.style.display = "block";
+        var coinEl = ovCard.querySelector(".coins");
+        if (coinEl) coinEl.textContent = profile.coins;
+      }
+    }, 60);
   }
 
   function showCaseResult(errorText, msg){
     var wrap = document.getElementById("caseResultWrap");
     if (!wrap) return;
-    if (errorText){
-      wrap.innerHTML = '<div class="case-result" style="color:#ff6b6b">'+errorText+'</div>';
-      return;
-    }
-    var sk = null;
-    for (var i=0;i<profile.allSkins.length;i++) if (profile.allSkins[i].id === msg.skinId) sk = profile.allSkins[i];
-    var txt = sk ? ('Выпал скин: ' + sk.name + ' (' + sk.rarity + ')') : 'Скин получен';
-    if (msg.alreadyOwned) txt += ' - уже был, компенсация ' + msg.refund;
-    wrap.innerHTML = '<div class="case-result">'+txt+'</div>';
-    var coinEl = ovCard.querySelector(".coins");
-    if (coinEl) coinEl.textContent = profile.coins;
+    if (errorText) wrap.innerHTML = '<div class="case-result" style="color:#ff6b6b">'+errorText+'</div>';
   }
 
   function showPlayUI(){
@@ -581,7 +665,7 @@
     inp.addEventListener("input", function(){ inp.value = inp.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,5); });
     document.getElementById("btnGo").onclick = function(){
       var c = (inp.value||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
-      if (c.length !== 5){ setStatus("Код - 5 символов", true); return; }
+      if (c.length !== 5) { setStatus("Код - 5 символов", true); return; }
       joinGame(c);
     };
   }
@@ -607,9 +691,7 @@
 
   function joinGame(code){
     roomCode = code;
-    if (ws && ws.readyState === 1){
-      ws.send(JSON.stringify({ t: "join", room: code, name: myName }));
-    }
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "join", room: code, name: myName }));
   }
 
   function showGameOver(score, kills){
@@ -625,7 +707,7 @@
       if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "respawn" }));
     };
     document.getElementById("btnQuit").onclick = function(){
-      myWorm = null; others = []; foods = [];
+      myWorm = null; others = []; foods = []; meHistory = [];
       showProfileUI();
     };
   }
@@ -643,14 +725,27 @@
     return out;
   }
 
+  var lastStateTime = 0;
   function loop(now){
+    var t = performance.now()/1000;
     if (myWorm && myWorm.alive && pointerActive){
       targetAngle = Math.atan2(pointerY + camY - myWorm.y, pointerX + camX - myWorm.x);
     }
     sendInput();
-    drawWorld(now);
+    drawWorld(t);
     requestAnimationFrame(loop);
   }
+
+  // Обновляем историю других при каждом state
+  var _origOnMessage = onMessage;
+  onMessage = function(ev){
+    var msg;
+    try { msg = JSON.parse(ev.data); } catch(e){ return; }
+    if (msg.t === "state" && msg.worms){
+      updateOthersInterp(msg.worms, performance.now());
+    }
+    _origOnMessage(ev);
+  };
 
   resize();
   wsConnect();
