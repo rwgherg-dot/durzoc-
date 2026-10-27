@@ -2,15 +2,16 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#05060f">
 <title>Worms Online</title>
 <style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  html,body{height:100%;overflow:hidden;background:#05060f;font-family:Arial,sans-serif;color:#fff;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden;background:#05060f;font-family:-apple-system,BlinkMacSystemFont,Arial,sans-serif;color:#fff;user-select:none;-webkit-user-select:none}
   #wrap{position:fixed;inset:0}
   canvas{display:block;touch-action:none}
-  #leftHud{position:fixed;top:12px;left:12px;z-index:5;display:flex;flex-direction:column;gap:8px;pointer-events:none;width:220px}
-  .panel{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:8px 12px}
+  #leftHud{position:fixed;top:calc(12px + env(safe-area-inset-top));left:calc(12px + env(safe-area-inset-left));z-index:5;display:flex;flex-direction:column;gap:8px;pointer-events:none;width:220px;transition:transform .3s}
+  .panel{background:rgba(10,12,26,.7);border:1px solid rgba(124,255,178,.15);border-radius:14px;padding:8px 12px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
   .label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#6a7a9a;margin-bottom:2px}
   .value{font-size:18px;font-weight:800;line-height:1;color:#7CFFB2}
   #scorePanel{display:flex;justify-content:space-between;gap:8px}
@@ -23,52 +24,72 @@
   #leaderList .row{display:flex;justify-content:space-between;gap:6px;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04)}
   #leaderList .nm{color:#cfd8e6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #leaderList .sc{color:#ffd93d;font-weight:800}
-  #boostBar{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);width:220px;height:10px;background:rgba(255,255,255,.1);border-radius:10px;overflow:hidden;z-index:5}
+  #boostBar{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:220px;height:10px;background:rgba(255,255,255,.1);border-radius:10px;overflow:hidden;z-index:5}
   #boostFill{height:100%;width:100%;background:linear-gradient(90deg,#7CFFB2,#4ecca3);transition:width .1s}
-  #boostBtn{position:fixed;right:24px;bottom:24px;width:80px;height:80px;border-radius:50%;background:rgba(124,255,178,.15);border:2px solid #7CFFB2;color:#7CFFB2;font-size:13px;font-weight:800;display:none;align-items:center;justify-content:center;z-index:5;user-select:none}
-  @media (max-width:600px){#boostBtn{display:flex}#leftHud{width:160px}#leaderPanel{max-height:160px}}
-  #overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;z-index:10;background:rgba(5,6,15,.96);opacity:0;pointer-events:none;transition:opacity .4s;overflow-y:auto}
+  #boostBtn{position:fixed;right:calc(24px + env(safe-area-inset-right));bottom:calc(24px + env(safe-area-inset-bottom));width:90px;height:90px;border-radius:50%;background:rgba(124,255,178,.18);border:2px solid #7CFFB2;color:#7CFFB2;font-size:13px;font-weight:800;display:none;align-items:center;justify-content:center;z-index:5;user-select:none;box-shadow:0 0 24px rgba(124,255,178,.35)}
+  #boostBtn.active{background:rgba(124,255,178,.4)}
+  #overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;z-index:10;background:rgba(5,6,15,.97);opacity:0;pointer-events:none;transition:opacity .4s;overflow-y:auto;-webkit-overflow-scrolling:touch}
   #overlay.show{opacity:1;pointer-events:auto}
-  .ov-card{max-width:480px;width:100%}
-  .ov-title{font-size:26px;font-weight:800;margin-bottom:6px;color:#7CFFB2}
+  .ov-card{max-width:520px;width:100%}
+  .ov-title{font-size:28px;font-weight:800;margin-bottom:6px;color:#7CFFB2;letter-spacing:1px}
   .ov-title.dead{color:#ff6b6b}
   .ov-sub{font-size:14px;color:#8892aa;margin-bottom:18px;line-height:1.5}
-  .btn{font-family:inherit;font-size:16px;font-weight:700;color:#05060f;background:#4ecca3;border:none;border-radius:100px;padding:14px 32px;cursor:pointer;box-shadow:0 8px 32px rgba(78,204,163,.4);margin:4px;-webkit-tap-highlight-color:transparent}
-  .btn:active{transform:scale(.96)}
+  .btn{font-family:inherit;font-size:16px;font-weight:700;color:#05060f;background:linear-gradient(135deg,#7CFFB2,#4ecca3);border:none;border-radius:100px;padding:14px 28px;cursor:pointer;box-shadow:0 8px 32px rgba(78,204,163,.4);margin:4px;-webkit-tap-highlight-color:transparent;min-height:48px}
+  .btn:active{transform:scale(.97)}
   .btn.ghost{background:transparent;color:#7CFFB2;border:2px solid #4ecca3;box-shadow:none}
-  .btn:disabled{opacity:.4;cursor:not-allowed}
-  .input{width:100%;font-family:inherit;font-size:18px;font-weight:700;text-align:center;background:rgba(255,255,255,.06);border:2px solid rgba(124,255,178,.3);border-radius:14px;padding:14px;color:#fff;margin-bottom:10px;outline:none}
+  .btn.full{display:block;width:100%;margin:6px 0}
+  .input{width:100%;font-family:inherit;font-size:18px;font-weight:700;text-align:center;background:rgba(255,255,255,.06);border:2px solid rgba(124,255,178,.3);border-radius:14px;padding:14px;color:#fff;margin-bottom:10px;outline:none;min-height:52px}
   .input:focus{border-color:#7CFFB2}
   .row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
   .code-big{font-size:38px;font-weight:900;letter-spacing:6px;color:#7CFFB2;background:rgba(124,255,178,.08);border:2px dashed rgba(124,255,178,.4);border-radius:16px;padding:16px;margin:12px 0;cursor:pointer}
   .status{font-size:13px;color:#8892aa;margin-top:10px;min-height:18px;line-height:1.4}
   .status.err{color:#ff6b6b}
-  .ov-hint{font-size:11px;color:#4a5570;margin-top:16px;line-height:1.5}
+  .status.ok{color:#7CFFB2}
+  .ov-hint{font-size:12px;color:#4a5570;margin-top:16px;line-height:1.5}
   .profile-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding:12px 16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px}
   .coins{font-size:18px;font-weight:800;color:#ffd93d}
   .admin-badge{display:inline-block;font-size:11px;font-weight:800;letter-spacing:1px;color:#0a0c1a;background:#ffd93d;padding:3px 8px;border-radius:100px;margin-left:6px}
   .skin-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
-  .skin-cell{aspect-ratio:1;border-radius:12px;border:2px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;padding:6px;transition:all .15s;position:relative}
+  .skin-cell{aspect-ratio:1;border-radius:12px;border:2px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;padding:6px;transition:all .15s;position:relative;overflow:hidden}
+  .skin-cell.locked{opacity:.45;cursor:not-allowed}
+  .skin-cell.locked::after{content:'LOCK';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);color:#fff;font-size:10px;font-weight:800;letter-spacing:1px}
   .skin-cell.owned{border-color:rgba(124,255,178,.5)}
-  .skin-cell.active{border-color:#7CFFB2;box-shadow:0 0 16px rgba(124,255,178,.5)}
-  .skin-dot{width:26px;height:26px;border-radius:50%;margin-bottom:4px}
-  .skin-name{font-size:9px;color:#8892aa;text-align:center;line-height:1.1}
-  .skin-rarity{position:absolute;top:3px;right:3px;font-size:8px;font-weight:800;padding:1px 5px;border-radius:100px}
+  .skin-cell.active{border-color:#7CFFB2;box-shadow:0 0 18px rgba(124,255,178,.6);transform:scale(1.04)}
+  .skin-preview{width:100%;height:0;padding-bottom:100%;border-radius:8px;position:relative;overflow:hidden;margin-bottom:4px}
+  .skin-preview-inner{position:absolute;inset:0;border-radius:8px}
+  .skin-name{font-size:9px;color:#cfd8e6;text-align:center;line-height:1.1;font-weight:700;z-index:2}
+  .skin-rarity{position:absolute;top:3px;right:3px;font-size:8px;font-weight:800;padding:1px 5px;border-radius:100px;z-index:2}
   .r-common{background:#4a5570;color:#fff}
   .r-rare{background:#4ecca3;color:#05060f}
   .r-epic{background:#c44dff;color:#fff}
   .r-legendary{background:#ffd93d;color:#05060f}
   .case-row{display:flex;gap:8px;justify-content:center;margin:12px 0}
-  .case-card{flex:1;padding:12px 6px;border-radius:12px;border:2px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);cursor:pointer;transition:all .15s}
+  .case-card{flex:1;padding:14px 6px;border-radius:12px;border:2px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);cursor:pointer;transition:all .15s}
   .case-card:active{transform:scale(.97)}
-  .case-card .cn{font-size:11px;font-weight:800;margin-bottom:4px}
-  .case-card .cp{font-size:13px;color:#ffd93d;font-weight:800}
+  .case-card .cn{font-size:12px;font-weight:800;margin-bottom:4px}
+  .case-card .cp{font-size:14px;color:#ffd93d;font-weight:800}
   .case-result{font-size:15px;line-height:1.5;margin:12px 0;padding:16px;border-radius:14px;background:rgba(124,255,178,.08);border:1px solid rgba(124,255,178,.3)}
-  .checkbox-row{display:flex;align-items:center;justify-content:center;gap:8px;margin:8px 0 14px;font-size:13px;color:#8892aa}
-  .checkbox-row input{width:18px;height:18px;accent-color:#4ecca3}
-  .case-anim{display:flex;justify-content:center;gap:6px;margin:16px 0}
-  .case-anim .cell{width:34px;height:34px;border-radius:8px;background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;transition:all .15s}
-  .case-anim .cell.on{background:#4ecca3;color:#05060f;border-color:#7CFFB2;transform:scale(1.15)}
+  .checkbox-row{display:flex;align-items:center;justify-content:center;gap:8px;margin:8px 0 14px;font-size:14px;color:#8892aa}
+  .checkbox-row input{width:20px;height:20px;accent-color:#4ecca3}
+  #caseReel{position:relative;overflow:hidden;height:90px;margin:16px 0;border-radius:14px;background:rgba(0,0,0,.5);border:1px solid rgba(124,255,178,.3)}
+  #caseReelTrack{display:flex;height:100%;will-change:transform}
+  .reel-cell{flex:0 0 90px;height:100%;display:flex;align-items:center;justify-content:center;padding:6px;border-right:1px solid rgba(255,255,255,.05)}
+  #caseReel::after{content:'';position:absolute;top:0;bottom:0;left:50%;width:2px;margin-left:-1px;background:#7CFFB2;box-shadow:0 0 12px #7CFFB2;pointer-events:none}
+  #caseResultText{font-size:15px;line-height:1.5;margin:12px 0;padding:14px;border-radius:12px;background:rgba(124,255,178,.08);border:1px solid rgba(124,255,178,.3);opacity:0;transition:opacity .3s}
+  #caseResultText.show{opacity:1}
+  @media (max-width:700px){
+    #boostBtn{display:flex}
+    #leftHud{width:150px;gap:6px}
+    #mapCanvas{max-height:100px}
+    #leaderPanel{max-height:130px}
+    .value{font-size:15px}
+    .ov-title{font-size:22px}
+    .skin-grid{grid-template-columns:repeat(3,1fr)}
+    #boostBar{width:140px;bottom:calc(16px + env(safe-area-inset-bottom))}
+  }
+  @media (hover:none) and (pointer:coarse){
+    #boostBtn{display:flex}
+  }
 </style>
 </head>
 <body>
@@ -78,14 +99,8 @@
     <div class="col"><div class="label">Счёт</div><div class="value" id="scoreVal">0</div></div>
     <div class="col"><div class="label">Убийства</div><div class="value" id="killsVal">0</div></div>
   </div>
-  <div class="panel" id="mapPanel">
-    <div class="label">Карта</div>
-    <canvas id="mapCanvas" width="200" height="200"></canvas>
-  </div>
-  <div class="panel" id="leaderPanel">
-    <div id="leaderTitle">Игроки</div>
-    <div id="leaderList"></div>
-  </div>
+  <div class="panel" id="mapPanel"><div class="label">Карта</div><canvas id="mapCanvas" width="200" height="200"></canvas></div>
+  <div class="panel" id="leaderPanel"><div id="leaderTitle">Игроки</div><div id="leaderList"></div></div>
 </div>
 <div id="boostBar"><div id="boostFill"></div></div>
 <div id="boostBtn">BOOST</div>
@@ -107,20 +122,23 @@
   var ovCard = document.getElementById("ovCard");
 
   var viewW=0, viewH=0, DPR=1;
-  var camX=0, camY=0;
-  var WORLD_W=4000, WORLD_H=4000;
+  var camX=0, camY=0, camVelX=0, camVelY=0;
+  var WORLD_W=5000, WORLD_H=5000;
 
   var ws=null, myId=null, myWorm=null;
   var others=[], foods=[];
-  var roomCode="", myName="", targetAngle=0, boosting=false;
+  var myName="", targetAngle=0, boosting=false;
   var pointerX=0, pointerY=0, pointerActive=false;
   var dead=false, profile=null;
+  var skinCache = {};
 
-  // Интерполяция: храним предыдущее и текущее состояние, рисуем с задержкой
-  var renderDelay = 0.08; // 80 мс назад
+  // Плавность: интерполяция
+  var renderDelay = 0.07;
   var meHistory = [];
-  var othersHistory = {};
-  var foodHistory = [];
+  var othersPrev = {}, othersCurr = {}, othersLastTime = 0, othersNextTime = 0;
+
+  // Мобильное управление
+  var isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
   function resize(){
     DPR = Math.min(window.devicePixelRatio||1, 2);
@@ -143,20 +161,18 @@
   canvas.addEventListener("touchstart", function(e){ onPointer(e); e.preventDefault(); }, {passive:false});
   canvas.addEventListener("touchmove", function(e){ onPointer(e); e.preventDefault(); }, {passive:false});
 
-  function startBoost(){ boosting = true; }
-  function stopBoost(){ boosting = false; }
+  function startBoost(){ boosting = true; boostBtn.classList.add("active"); }
+  function stopBoost(){ boosting = false; boostBtn.classList.remove("active"); }
   window.addEventListener("keydown", function(e){
     var k = e.key ? e.key.toLowerCase() : "";
-    if (k === " " || k === "shift") { e.preventDefault(); startBoost(); }
+    if (k === " " || k === "shift"){ e.preventDefault(); startBoost(); }
   });
   window.addEventListener("keyup", function(e){
     var k = e.key ? e.key.toLowerCase() : "";
-    if (k === " " || k === "shift") { e.preventDefault(); stopBoost(); }
+    if (k === " " || k === "shift"){ e.preventDefault(); stopBoost(); }
   });
   canvas.addEventListener("mousedown", startBoost);
   canvas.addEventListener("mouseup", stopBoost);
-  canvas.addEventListener("touchstart", function(){ startBoost(); }, {passive:true});
-  canvas.addEventListener("touchend", function(){ stopBoost(); }, {passive:true});
   boostBtn.addEventListener("touchstart", function(e){ e.preventDefault(); startBoost(); }, {passive:false});
   boostBtn.addEventListener("touchend", function(e){ e.preventDefault(); stopBoost(); }, {passive:false});
   boostBtn.addEventListener("mousedown", startBoost);
@@ -178,44 +194,58 @@
   function onMessage(ev){
     var msg;
     try { msg = JSON.parse(ev.data); } catch(e){ return; }
-    if (msg.t === "authOk") { myName = msg.name; return; }
-    if (msg.t === "authError") { setStatus(msg.message, true); return; }
-    if (msg.t === "pwdOk") { setStatus("Пароль изменён", false); return; }
-    if (msg.t === "pwdError") { setStatus(msg.message, true); return; }
-    if (msg.t === "profile") { profile = msg; myName = msg.name; showProfileUI(); return; }
-    if (msg.t === "leaderboard") { renderLeaderboard(msg.list || []); return; }
-    if (msg.t === "caseResult") {
-      if (msg.error) { showCaseResult(msg.error, null); }
+    if (msg.t === "authOk"){ myName = msg.name; return; }
+    if (msg.t === "authError"){ setStatus(msg.message, true); return; }
+    if (msg.t === "pwdOk"){ setStatus("Пароль изменён", false, true); return; }
+    if (msg.t === "pwdError"){ setStatus(msg.message, true); return; }
+    if (msg.t === "profile"){ profile = msg; myName = msg.name; buildSkinCache(); showProfileUI(); return; }
+    if (msg.t === "leaderboard"){ renderLeaderboard(msg.list || []); return; }
+    if (msg.t === "caseResult"){
+      if (msg.error){ showCaseError(msg.error); }
       else {
-        if (profile) { profile.coins = msg.coins; profile.skins = msg.skins; }
+        if (profile){ profile.coins = msg.coins; profile.skins = msg.skins; }
         animateCase(msg.skinId, msg.alreadyOwned, msg.refund);
       }
       return;
     }
-    if (msg.t === "skinSet") { if (profile) profile.activeSkin = msg.activeSkin; showProfileUI(); return; }
-    if (msg.t === "joined") { myId = msg.id; WORLD_W = msg.world.w; WORLD_H = msg.world.h; overlay.className = ""; dead = false; meHistory = []; return; }
-    if (msg.t === "respawned") { myId = msg.id; dead = false; overlay.className = ""; meHistory = []; return; }
-    if (msg.t === "error") { setStatus(msg.message, true); return; }
-    if (msg.t === "state") {
+    if (msg.t === "skinSet"){ if (profile) profile.activeSkin = msg.activeSkin; showProfileUI(); return; }
+    if (msg.t === "joined"){ myId = msg.id; WORLD_W = msg.world.w; WORLD_H = msg.world.h; overlay.className = ""; dead = false; meHistory = []; return; }
+    if (msg.t === "respawned"){ myId = msg.id; dead = false; overlay.className = ""; meHistory = []; return; }
+    if (msg.t === "error"){ setStatus(msg.message, true); return; }
+    if (msg.t === "state"){
       var now = performance.now()/1000;
-      if (msg.me) {
+      if (msg.me){
         meHistory.push({ t: now, data: msg.me });
-        while (meHistory.length > 20) meHistory.shift();
+        while (meHistory.length > 25) meHistory.shift();
       }
-      others = msg.worms || [];
+      if (msg.worms){
+        var newMap = {};
+        for (var i=0;i<msg.worms.length;i++) newMap[msg.worms[i].id] = msg.worms[i];
+        othersPrev = othersCurr;
+        othersCurr = newMap;
+        othersLastTime = othersNextTime || now;
+        othersNextTime = now;
+      }
       if (msg.food) foods = msg.food;
-      if (msg.world) { WORLD_W = msg.world.w; WORLD_H = msg.world.h; }
-      if (msg.me) {
+      if (msg.world){ WORLD_W = msg.world.w; WORLD_H = msg.world.h; }
+      if (msg.me){
         myWorm = msg.me;
         scoreVal.textContent = myWorm.score;
         killsVal.textContent = myWorm.kills;
         boostFill.style.width = Math.max(0, Math.min(100, myWorm.boostFuel)) + "%";
-        if (!myWorm.alive && !dead) { dead = true; showGameOver(myWorm.score, myWorm.kills); }
+        if (!myWorm.alive && !dead){ dead = true; showGameOver(myWorm.score, myWorm.kills); }
       }
     }
   }
 
-  // Получаем состояние из истории на момент (now - renderDelay)
+  function buildSkinCache(){
+    skinCache = {};
+    for (var i=0;i<profile.allSkins.length;i++){
+      var s = profile.allSkins[i];
+      skinCache[s.id] = s;
+    }
+  }
+
   function getInterpolatedMe(){
     if (!meHistory.length) return null;
     var target = performance.now()/1000 - renderDelay;
@@ -232,67 +262,47 @@
   }
 
   function lerpState(a, b, f){
-    var out = { id: b.id, color: b.color, alive: b.alive, angle: b.angle,
-      score: b.score, kills: b.kills, boostFuel: b.boostFuel,
-      radius: a.radius + (b.radius - a.radius)*f,
-      x: a.x + (b.x - a.x)*f,
-      y: a.y + (b.y - a.y)*f,
+    var out = { id:b.id, skin:b.skin, color:b.color, alive:b.alive, angle:b.angle,
+      score:b.score, kills:b.kills, boostFuel:b.boostFuel,
+      radius:a.radius + (b.radius-a.radius)*f,
+      x:a.x + (b.x-a.x)*f, y:a.y + (b.y-a.y)*f,
       segments: [] };
     var n = Math.min(a.segments.length, b.segments.length);
     for (var i=0;i<n;i++){
       out.segments.push([
-        a.segments[i][0] + (b.segments[i][0] - a.segments[i][0])*f,
-        a.segments[i][1] + (b.segments[i][1] - a.segments[i][1])*f
+        a.segments[i][0] + (b.segments[i][0]-a.segments[i][0])*f,
+        a.segments[i][1] + (b.segments[i][1]-a.segments[i][1])*f
       ]);
     }
     return out;
   }
-
   function lerpOther(a, b, f){
-    var out = { id: b.id, name: b.name, color: b.color, alive: b.alive, angle: b.angle,
-      score: b.score, kills: b.kills,
-      radius: a.radius + (b.radius - a.radius)*f,
-      x: a.x + (b.x - a.x)*f,
-      y: a.y + (b.y - a.y)*f,
+    var out = { id:b.id, name:b.name, skin:b.skin, color:b.color, alive:b.alive, angle:b.angle,
+      score:b.score, kills:b.kills,
+      radius:a.radius + (b.radius-a.radius)*f,
+      x:a.x + (b.x-a.x)*f, y:a.y + (b.y-a.y)*f,
       segments: [] };
     var n = Math.min(a.segments.length, b.segments.length);
     for (var i=0;i<n;i++){
       out.segments.push([
-        a.segments[i][0] + (b.segments[i][0] - a.segments[i][0])*f,
-        a.segments[i][1] + (b.segments[i][1] - a.segments[i][1])*f
+        a.segments[i][0] + (b.segments[i][0]-a.segments[i][0])*f,
+        a.segments[i][1] + (b.segments[i][1]-a.segments[i][1])*f
       ]);
     }
     return out;
   }
-
-  // Для других храним историю по id
-  var othersPrev = {};
-  var othersCurr = {};
-  var othersLastTime = 0;
-  var othersNextTime = 0;
-
-  function updateOthersInterp(newList, now){
-    var newMap = {};
-    for (var i=0;i<newList.length;i++) newMap[newList[i].id] = newList[i];
-    othersPrev = othersCurr;
-    othersCurr = newMap;
-    othersLastTime = othersNextTime || now;
-    othersNextTime = now;
-  }
-
-  function getInterpolatedOthers(now){
-    if (!othersNextTime || !othersLastTime || othersNextTime === othersLastTime) {
-      return Object.values(othersCurr);
-    }
+  function getInterpolatedOthers(){
+    var now = performance.now()/1000;
+    if (!othersNextTime || othersNextTime === othersLastTime) return Object.values(othersCurr);
     var target = now - renderDelay;
     var f = (target - othersLastTime) / (othersNextTime - othersLastTime);
     if (f < 0) f = 0;
     if (f > 1) f = 1;
     var out = [];
-    for (var id in othersCurr) {
+    for (var id in othersCurr){
       var b = othersCurr[id];
       var a = othersPrev[id];
-      if (!a) { out.push(b); continue; }
+      if (!a){ out.push(b); continue; }
       out.push(lerpOther(a, b, f));
     }
     return out;
@@ -313,35 +323,163 @@
     leaderList.innerHTML = html || '<div style="color:#4a5570;font-size:11px">Пока никого</div>';
   }
 
+  // === Отрисовка скинов ===
+  function paintSkinIntoContext(c, skin, w, h){
+    var s = skinCache[skin] || { pattern:'solid', c1:'#7CFFB2', c2:'#4ecca3' };
+    if (s.pattern === 'gradient'){
+      var g = c.createLinearGradient(0,0,w,h);
+      g.addColorStop(0, s.c1); g.addColorStop(1, s.c2);
+      c.fillStyle = g;
+      c.fillRect(0,0,w,h);
+    } else if (s.pattern === 'stripes'){
+      c.fillStyle = s.c1;
+      c.fillRect(0,0,w,h);
+      c.fillStyle = s.c2;
+      var step = Math.max(4, w/10);
+      for (var i=-h;i<w+h;i+=step*2){
+        c.beginPath();
+        c.moveTo(i,0); c.lineTo(i+step,h); c.lineTo(i+step*1.5,h); c.lineTo(i+step*0.5,0);
+        c.closePath(); c.fill();
+      }
+    } else if (s.pattern === 'dots'){
+      c.fillStyle = s.c1;
+      c.fillRect(0,0,w,h);
+      c.fillStyle = s.c2;
+      var d = Math.max(3, w/8);
+      for (var yy=d/2; yy<h; yy+=d*1.5){
+        for (var xx=d/2; xx<w; xx+=d*1.5){
+          c.beginPath(); c.arc(xx,yy,d*0.35,0,Math.PI*2); c.fill();
+        }
+      }
+    } else {
+      c.fillStyle = s.c1;
+      c.fillRect(0,0,w,h);
+    }
+  }
+
+  function makeSkinPreview(skinId){
+    var div = document.createElement("div");
+    div.className = "skin-preview";
+    var inner = document.createElement("div");
+    inner.className = "skin-preview-inner";
+    var cv = document.createElement("canvas");
+    cv.width = 48; cv.height = 48;
+    cv.style.width = "100%"; cv.style.height = "100%"; cv.style.display = "block";
+    cv.style.borderRadius = "8px";
+    paintSkinIntoContext(cv.getContext("2d"), skinId, 48, 48);
+    inner.appendChild(cv);
+    div.appendChild(inner);
+    return div;
+  }
+
+  // === Рисование червя ===
+  function drawWormBody(w, isMe){
+    if (!w.alive || !w.segments || w.segments.length < 2) return;
+    var segs = w.segments;
+    var radius = w.radius || 14;
+    var skin = skinCache[w.skin] || { pattern:'solid', c1:w.color||'#7CFFB2', c2:'#4ecca3' };
+
+    // Строим путь из точек
+    var path = [];
+    for (var i=0;i<segs.length;i++) path.push({x: segs[i][0], y: segs[i][1]});
+
+    // Обводка-свечение
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.shadowColor = skin.c1;
+    ctx.shadowBlur = isMe ? 22 : 14;
+    ctx.strokeStyle = skin.c1;
+    ctx.lineWidth = radius*2;
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    for (var j=1;j<path.length;j++) ctx.lineTo(path[j].x, path[j].y);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Заливка с узором: рисуем поверх толстым stroke с clip
+    // Просто рисуем второй stroke с паттерном цвета c2 и dash
+    if (skin.pattern === 'gradient'){
+      var g = ctx.createLinearGradient(path[path.length-1].x, path[path.length-1].y, path[0].x, path[0].y);
+      g.addColorStop(0, skin.c2);
+      g.addColorStop(1, skin.c1);
+      ctx.strokeStyle = g;
+      ctx.lineWidth = radius*1.9;
+      ctx.beginPath();
+      ctx.moveTo(path[0].x, path[0].y);
+      for (var jj=1;jj<path.length;jj++) ctx.lineTo(path[jj].x, path[jj].y);
+      ctx.stroke();
+    } else if (skin.pattern === 'stripes'){
+      ctx.strokeStyle = skin.c2;
+      ctx.lineWidth = radius*1.9;
+      ctx.setLineDash([radius*0.9, radius*0.9]);
+      ctx.beginPath();
+      ctx.moveTo(path[0].x, path[0].y);
+      for (var j2=1;j2<path.length;j2++) ctx.lineTo(path[j2].x, path[j2].y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (skin.pattern === 'dots'){
+      ctx.strokeStyle = skin.c2;
+      ctx.lineWidth = radius*1.9;
+      ctx.setLineDash([radius*0.3, radius*1.2]);
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(path[0].x, path[0].y);
+      for (var j3=1;j3<path.length;j3++) ctx.lineTo(path[j3].x, path[j3].y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Блики по центру
+    ctx.strokeStyle = "rgba(255,255,255,0.22)";
+    ctx.lineWidth = radius*0.7;
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    for (var j4=1;j4<path.length;j4++) ctx.lineTo(path[j4].x, path[j4].y);
+    ctx.stroke();
+
+    // Голова с глазами
+    var hx = path[0].x, hy = path[0].y, angle = w.angle || 0;
+    var dirX = Math.cos(angle), dirY = Math.sin(angle);
+    var perpX = -dirY, perpY = dirX;
+    var eo = radius*0.5, fw = radius*0.4;
+    var e1x = hx+perpX*eo+dirX*fw, e1y = hy+perpY*eo+dirY*fw;
+    var e2x = hx-perpX*eo+dirX*fw, e2y = hy-perpY*eo+dirY*fw;
+    ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(e1x,e1y,radius*0.32,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(e2x,e2y,radius*0.32,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#0a0c1a";
+    ctx.beginPath(); ctx.arc(e1x+dirX*2,e1y+dirY*2,radius*0.16,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(e2x+dirX*2,e2y+dirY*2,radius*0.16,0,Math.PI*2); ctx.fill();
+  }
+
   function drawWorld(nowSec){
-    var nowMs = performance.now();
     var interpMe = getInterpolatedMe();
-    var interpOthers = getInterpolatedOthers(nowMs);
+    var interpOthers = getInterpolatedOthers();
 
     ctx.fillStyle = "#05060f"; ctx.fillRect(0,0,viewW,viewH);
     if (interpMe && interpMe.alive){
       var tcx = interpMe.x - viewW/2;
       var tcy = interpMe.y - viewH/2;
-      camX += (tcx-camX)*0.18;
-      camY += (tcy-camY)*0.18;
+      // Плавная камера с пружиной
+      var k = 0.14, damp = 0.75;
+      camVelX = (camVelX + (tcx-camX)*k) * damp;
+      camVelY = (camVelY + (tcy-camY)*k) * damp;
+      camX += camVelX;
+      camY += camVelY;
     }
     camX = Math.max(0, Math.min(WORLD_W-viewW, camX));
     camY = Math.max(0, Math.min(WORLD_H-viewH, camY));
     ctx.save();
     ctx.translate(-camX, -camY);
 
-    ctx.strokeStyle = "rgba(124,255,178,0.06)";
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(124,255,178,0.06)"; ctx.lineWidth = 1;
     var grid = 80;
-    var sx = Math.floor(camX/grid)*grid;
-    var sy = Math.floor(camY/grid)*grid;
+    var sx = Math.floor(camX/grid)*grid, sy = Math.floor(camY/grid)*grid;
     ctx.beginPath();
     for (var x=sx;x<camX+viewW+grid;x+=grid){ ctx.moveTo(x,camY); ctx.lineTo(x,camY+viewH); }
     for (var y=sy;y<camY+viewH+grid;y+=grid){ ctx.moveTo(camX,y); ctx.lineTo(camX+viewW,y); }
     ctx.stroke();
 
-    ctx.strokeStyle = "rgba(255,107,107,0.5)";
-    ctx.lineWidth = 4;
+    ctx.strokeStyle = "rgba(255,107,107,0.5)"; ctx.lineWidth = 4;
     ctx.strokeRect(0,0,WORLD_W,WORLD_H);
 
     for (var i=0;i<foods.length;i++){
@@ -366,7 +504,7 @@
       }
     }
 
-    for (var k=0;k<interpOthers.length;k++) drawWormBody(interpOthers[k], false);
+    for (var k1=0;k1<interpOthers.length;k1++) drawWormBody(interpOthers[k1], false);
     if (interpMe) drawWormBody(interpMe, true);
     ctx.restore();
 
@@ -384,41 +522,12 @@
     drawMinimap(interpMe, interpOthers);
   }
 
-  function drawWormBody(w, isMe){
-    if (!w.alive || !w.segments || w.segments.length < 2) return;
-    var segs = w.segments, color = w.color || "#7CFFB2", radius = w.radius || 14;
-    ctx.lineCap = "round"; ctx.lineJoin = "round";
-    ctx.strokeStyle = color; ctx.shadowColor = color; ctx.shadowBlur = isMe ? 20 : 12;
-    ctx.lineWidth = radius*2;
-    ctx.beginPath();
-    ctx.moveTo(segs[0][0], segs[0][1]);
-    for (var i=1;i<segs.length;i++) ctx.lineTo(segs[i][0], segs[i][1]);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = "rgba(255,255,255,0.3)";
-    ctx.lineWidth = radius*1.05;
-    ctx.stroke();
-    var hx = segs[0][0], hy = segs[0][1], angle = w.angle || 0;
-    var dirX = Math.cos(angle), dirY = Math.sin(angle);
-    var perpX = -dirY, perpY = dirX;
-    var eo = radius*0.5, fw = radius*0.4;
-    var e1x = hx+perpX*eo+dirX*fw, e1y = hy+perpY*eo+dirY*fw;
-    var e2x = hx-perpX*eo+dirX*fw, e2y = hy-perpY*eo+dirY*fw;
-    ctx.fillStyle = "#fff";
-    ctx.beginPath(); ctx.arc(e1x,e1y,radius*0.3,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(e2x,e2y,radius*0.3,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = "#0a0c1a";
-    ctx.beginPath(); ctx.arc(e1x+dirX*2,e1y+dirY*2,radius*0.15,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(e2x+dirX*2,e2y+dirY*2,radius*0.15,0,Math.PI*2); ctx.fill();
-  }
-
   function drawMinimap(interpMe, interpOthers){
     var mw = mapCanvas.width, mh = mapCanvas.height;
     mapCtx.clearRect(0,0,mw,mh);
     mapCtx.fillStyle = "#0a0c1a";
     mapCtx.fillRect(0,0,mw,mh);
-    mapCtx.strokeStyle = "rgba(124,255,178,0.2)";
-    mapCtx.lineWidth = 1;
+    mapCtx.strokeStyle = "rgba(124,255,178,0.2)"; mapCtx.lineWidth = 1;
     mapCtx.strokeRect(0.5,0.5,mw-1,mh-1);
     var sx = mw/WORLD_W, sy = mh/WORLD_H;
     for (var i=0;i<interpOthers.length;i++){
@@ -437,16 +546,15 @@
     }
   }
 
+  // === Экраны ===
   function showIntroUI(){
     overlay.className = "show";
     ovCard.innerHTML =
       '<div class="ov-title">Worms Online</div>' +
-      '<div class="ov-sub">Собирай еду, ускоряйся, убивай других. Чем больше ешь - тем длиннее и шире.</div>' +
-      '<div class="row" style="margin-bottom:8px">' +
-        '<button class="btn" id="btnLogin">Войти</button>' +
-        '<button class="btn ghost" id="btnRegister">Регистрация</button>' +
-      '</div>' +
-      '<div class="ov-hint">Мышь или палец - поворот. Пробел / Shift - ускорение.</div>';
+      '<div class="ov-sub">Собирай еду, ускоряйся, убивай других. Один общий мир для всех.</div>' +
+      '<button class="btn full" id="btnLogin">Войти</button>' +
+      '<button class="btn ghost full" id="btnRegister">Регистрация</button>' +
+      '<div class="ov-hint">Мышь / палец - поворот. Пробел / Shift / BOOST - ускорение.</div>';
     document.getElementById("btnLogin").onclick = showLoginUI;
     document.getElementById("btnRegister").onclick = showRegisterUI;
   }
@@ -455,10 +563,11 @@
     overlay.className = "show";
     ovCard.innerHTML =
       '<div class="ov-title">Вход</div>' +
-      '<input class="input" id="loginName" maxlength="16" placeholder="ИМЯ">' +
-      '<input class="input" id="loginPass" type="password" maxlength="40" placeholder="ПАРОЛЬ">' +
+      '<input class="input" id="loginName" maxlength="16" placeholder="ИМЯ" autocomplete="username">' +
+      '<input class="input" id="loginPass" type="password" maxlength="40" placeholder="ПАРОЛЬ" autocomplete="current-password">' +
       '<div class="checkbox-row"><input type="checkbox" id="rememberMe"><label for="rememberMe">Запомнить меня</label></div>' +
-      '<div class="row"><button class="btn" id="btnDoLogin">Войти</button><button class="btn ghost" id="btnBack">Назад</button></div>' +
+      '<button class="btn full" id="btnDoLogin">Войти</button>' +
+      '<button class="btn ghost full" id="btnBack">Назад</button>' +
       '<div class="status" id="statusText"></div>';
     document.getElementById("btnBack").onclick = showIntroUI;
     var nm = document.getElementById("loginName");
@@ -466,12 +575,12 @@
     var rm = document.getElementById("rememberMe");
     try{
       var saved = localStorage.getItem("worms_saved_name");
-      if (saved) { nm.value = saved; rm.checked = true; }
+      if (saved){ nm.value = saved; rm.checked = true; }
     }catch(e){}
     document.getElementById("btnDoLogin").onclick = function(){
       var n = (nm.value||"").trim();
       var p = ps.value || "";
-      if (!n || !p) { setStatus("Введите имя и пароль", true); return; }
+      if (!n || !p){ setStatus("Введите имя и пароль", true); return; }
       try{
         if (rm.checked) localStorage.setItem("worms_saved_name", n);
         else localStorage.removeItem("worms_saved_name");
@@ -484,16 +593,17 @@
     overlay.className = "show";
     ovCard.innerHTML =
       '<div class="ov-title">Регистрация</div>' +
-      '<input class="input" id="regName" maxlength="16" placeholder="ИМЯ">' +
-      '<input class="input" id="regPass" type="password" maxlength="40" placeholder="ПАРОЛЬ (от 4 символов)">' +
-      '<div class="row"><button class="btn" id="btnDoReg">Создать</button><button class="btn ghost" id="btnBack">Назад</button></div>' +
+      '<input class="input" id="regName" maxlength="16" placeholder="ИМЯ" autocomplete="username">' +
+      '<input class="input" id="regPass" type="password" maxlength="40" placeholder="ПАРОЛЬ (от 4 символов)" autocomplete="new-password">' +
+      '<button class="btn full" id="btnDoReg">Создать</button>' +
+      '<button class="btn ghost full" id="btnBack">Назад</button>' +
       '<div class="status" id="statusText"></div>' +
       '<div class="ov-hint">Стартовый баланс: 500 монет и скин "Классик".</div>';
     document.getElementById("btnBack").onclick = showIntroUI;
     document.getElementById("btnDoReg").onclick = function(){
       var n = (document.getElementById("regName").value||"").trim();
       var p = document.getElementById("regPass").value || "";
-      if (!n || !p) { setStatus("Введите имя и пароль", true); return; }
+      if (!n || !p){ setStatus("Введите имя и пароль", true); return; }
       if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "register", name: n, password: p }));
     };
   }
@@ -502,15 +612,15 @@
     overlay.className = "show";
     var adminBadge = profile.isAdmin ? '<span class="admin-badge">ADMIN</span>' : '';
     var cells = "";
-    var skinMap = {};
-    for (var i=0;i<profile.allSkins.length;i++) skinMap[profile.allSkins[i].id] = profile.allSkins[i];
-    for (var j=0;j<profile.skins.length;j++){
-      var sk = skinMap[profile.skins[j]];
-      if (!sk) continue;
+    for (var i=0;i<profile.allSkins.length;i++){
+      var sk = profile.allSkins[i];
+      var owned = profile.skins.indexOf(sk.id) !== -1;
       var active = sk.id === profile.activeSkin ? " active" : "";
-      cells += '<div class="skin-cell owned'+active+'" data-skin="'+sk.id+'">' +
+      var locked = owned ? "" : " locked";
+      var preview = owned ? "" : "";
+      cells += '<div class="skin-cell'+locked+' '+active+'" data-skin="'+sk.id+'" data-owned="'+(owned?1:0)+'">' +
         '<span class="skin-rarity r-'+sk.rarity+'">'+sk.rarity+'</span>' +
-        '<div class="skin-dot" style="background:'+sk.color+'"></div>' +
+        (owned ? '<div class="skin-preview"><div class="skin-preview-inner"><canvas data-skin-canvas="'+sk.id+'" width="48" height="48" style="width:100%;height:100%;display:block;border-radius:8px"></canvas></div></div>' : '<div class="skin-preview"></div>') +
         '<div class="skin-name">'+sk.name+'</div>' +
         '</div>';
     }
@@ -522,16 +632,27 @@
       '<div style="display:flex;justify-content:space-between;font-size:12px;color:#8892aa;margin-bottom:12px">' +
         '<span>Убийств: '+profile.kills+'</span><span>Смертей: '+profile.deaths+'</span>' +
       '</div>' +
-      '<div class="row" style="margin-bottom:12px">' +
-        '<button class="btn" id="btnPlay">Играть</button>' +
-        '<button class="btn ghost" id="btnCases">Кейсы</button>' +
-        '<button class="btn ghost" id="btnPwd">Пароль</button>' +
-        '<button class="btn ghost" id="btnLogout">Выйти</button>' +
+      '<button class="btn full" id="btnPlay">Играть</button>' +
+      '<button class="btn ghost full" id="btnCases">Кейсы</button>' +
+      '<div class="row" style="margin:6px 0">' +
+        '<button class="btn ghost" id="btnPwd" style="flex:1">Пароль</button>' +
+        '<button class="btn ghost" id="btnLogout" style="flex:1">Выйти</button>' +
       '</div>' +
-      '<div style="font-size:13px;color:#8892aa;text-align:left;margin-bottom:6px">Мои скины:</div>' +
+      '<div style="font-size:13px;color:#8892aa;text-align:left;margin:12px 0 6px">Скины:</div>' +
       '<div class="skin-grid">'+cells+'</div>' +
       '<div class="status" id="statusText"></div>';
-    document.getElementById("btnPlay").onclick = showPlayUI;
+
+    // Нарисовать превью на канвасах
+    var canvases = ovCard.querySelectorAll("canvas[data-skin-canvas]");
+    for (var c=0;c<canvases.length;c++){
+      var cv = canvases[c];
+      var sid = cv.getAttribute("data-skin-canvas");
+      paintSkinIntoContext(cv.getContext("2d"), sid, 48, 48);
+    }
+
+    document.getElementById("btnPlay").onclick = function(){
+      joinGame();
+    };
     document.getElementById("btnCases").onclick = showCasesUI;
     document.getElementById("btnPwd").onclick = showPasswordUI;
     document.getElementById("btnLogout").onclick = function(){
@@ -540,8 +661,10 @@
       showIntroUI();
     };
     var cellsEl = ovCard.querySelectorAll(".skin-cell");
-    for (var c=0;c<cellsEl.length;c++){
-      cellsEl[c].onclick = function(){
+    for (var c2=0;c2<cellsEl.length;c2++){
+      cellsEl[c2].onclick = function(){
+        var owned = this.getAttribute("data-owned") === "1";
+        if (!owned) return;
         var sid = this.getAttribute("data-skin");
         if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "setSkin", name: myName, skinId: sid, wormId: myId }));
       };
@@ -554,13 +677,14 @@
       '<div class="ov-title">Смена пароля</div>' +
       '<input class="input" id="oldPass" type="password" maxlength="40" placeholder="СТАРЫЙ ПАРОЛЬ">' +
       '<input class="input" id="newPass" type="password" maxlength="40" placeholder="НОВЫЙ ПАРОЛЬ">' +
-      '<div class="row"><button class="btn" id="btnDoPwd">Сохранить</button><button class="btn ghost" id="btnBack">Назад</button></div>' +
+      '<button class="btn full" id="btnDoPwd">Сохранить</button>' +
+      '<button class="btn ghost full" id="btnBack">Назад</button>' +
       '<div class="status" id="statusText"></div>';
     document.getElementById("btnBack").onclick = showProfileUI;
     document.getElementById("btnDoPwd").onclick = function(){
       var op = document.getElementById("oldPass").value || "";
       var np = document.getElementById("newPass").value || "";
-      if (!op || !np) { setStatus("Заполните поля", true); return; }
+      if (!op || !np){ setStatus("Заполните поля", true); return; }
       if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "changePassword", name: myName, oldPassword: op, newPassword: np }));
     };
   }
@@ -579,8 +703,8 @@
       '<div class="ov-title">Кейсы</div>' +
       '<div class="ov-sub">Монет: <span class="coins">'+profile.coins+'</span></div>' +
       '<div class="case-row">'+casesHtml+'</div>' +
-      '<div id="caseResultWrap"></div>' +
-      '<button class="btn ghost" id="btnBack">Назад</button>';
+      '<div id="caseReelWrap"></div>' +
+      '<button class="btn ghost full" id="btnBack">Назад</button>';
     document.getElementById("btnBack").onclick = showProfileUI;
     var cards = ovCard.querySelectorAll(".case-card");
     for (var c=0;c<cards.length;c++){
@@ -591,107 +715,78 @@
     }
   }
 
+  function showCaseError(text){
+    var w = document.getElementById("caseReelWrap");
+    if (!w) return;
+    w.innerHTML = '<div class="case-result" style="color:#ff6b6b">'+text+'</div>';
+  }
+
   function animateCase(skinId, alreadyOwned, refund){
-    var wrap = document.getElementById("caseResultWrap");
+    var wrap = document.getElementById("caseReelWrap");
     if (!wrap) return;
-    // Анимация: полоса из 12 ячеек, где одна "выпадает"
-    var cells = 12;
-    var html = '<div class="case-anim" id="caseAnim">';
-    for (var i=0;i<cells;i++) html += '<div class="cell" data-i="'+i+'">?</div>';
-    html += '</div><div class="case-result" id="caseFinal" style="display:none"></div>';
+    // Строим ленту из 40 случайных скинов + победитель в конце
+    var reelItems = [];
+    for (var i=0;i<40;i++){
+      var rndSkin = profile.allSkins[Math.floor(Math.random()*profile.allSkins.length)];
+      reelItems.push(rndSkin);
+    }
+    var winner = skinCache[skinId] || profile.allSkins[0];
+    // Победитель на позиции 40
+    reelItems.push(winner);
+    // Ещё 10 после, чтобы было куда докрутиться
+    for (var k=0;k<10;k++){
+      var rnd2 = profile.allSkins[Math.floor(Math.random()*profile.allSkins.length)];
+      reelItems.push(rnd2);
+    }
+    var total = reelItems.length;
+    var winIdx = 40;
+    var cellW = 90;
+    var html = '<div id="caseReel"><div id="caseReelTrack">';
+    for (var r=0;r<total;r++){
+      var s = reelItems[r];
+      var cid = 'reelcv_'+r;
+      html += '<div class="reel-cell"><canvas id="'+cid+'" width="60" height="60" style="width:60px;height:60px;border-radius:10px"></canvas></div>';
+    }
+    html += '</div></div>';
+    html += '<div id="caseResultText"></div>';
     wrap.innerHTML = html;
-    var animEl = document.getElementById("caseAnim");
-    var finalEl = document.getElementById("caseFinal");
-    var cellEls = animEl.querySelectorAll(".cell");
-    var step = 0;
-    var sk = null;
-    for (var j=0;j<profile.allSkins.length;j++) if (profile.allSkins[j].id === skinId) sk = profile.allSkins[j];
-    var winnerIdx = Math.floor(Math.random()*cells);
-    var interval = setInterval(function(){
-      for (var k=0;k<cellEls.length;k++) cellEls[k].classList.remove("on");
-      cellEls[step % cells].classList.add("on");
-      step++;
-      if (step >= cells * 2 + winnerIdx) {
-        clearInterval(interval);
-        for (var m=0;m<cellEls.length;m++) cellEls[m].classList.remove("on");
-        cellEls[winnerIdx].classList.add("on");
-        var txt = sk ? ('Выпал скин: ' + sk.name + ' (' + sk.rarity + ')') : 'Скин получен';
-        if (alreadyOwned) txt += ' - уже был, компенсация ' + refund;
-        finalEl.textContent = txt;
-        finalEl.style.display = "block";
+    // Нарисовать все превью
+    for (var rr=0;rr<total;rr++){
+      var cv = document.getElementById('reelcv_'+rr);
+      if (cv) paintSkinIntoContext(cv.getContext("2d"), reelItems[rr].id, 60, 60);
+    }
+    var track = document.getElementById("caseReelTrack");
+    var reel = document.getElementById("caseReel");
+    var containerW = reel.clientWidth;
+    var targetX = -(winIdx*cellW + cellW/2 - containerW/2);
+    // Анимация: плавная с cubic-bezier через ручной rAF
+    var startTime = performance.now();
+    var duration = 3200;
+    var startX = 0;
+    function easeOutQuart(t){ return 1 - Math.pow(1-t, 4); }
+    function tick(){
+      var t = (performance.now() - startTime) / duration;
+      if (t > 1) t = 1;
+      var e = easeOutQuart(t);
+      var x = startX + (targetX - startX) * e;
+      // Небольшое перерегулирование
+      track.style.transform = 'translateX(' + x + 'px)';
+      if (t < 1) { requestAnimationFrame(tick); }
+      else {
+        var txt = 'Выпал скин: ' + winner.name + ' (' + winner.rarity + ')';
+        if (alreadyOwned) txt += ' - уже был, +' + refund + ' монет';
+        var res = document.getElementById("caseResultText");
+        res.textContent = txt;
+        res.classList.add("show");
         var coinEl = ovCard.querySelector(".coins");
         if (coinEl) coinEl.textContent = profile.coins;
       }
-    }, 60);
+    }
+    requestAnimationFrame(tick);
   }
 
-  function showCaseResult(errorText, msg){
-    var wrap = document.getElementById("caseResultWrap");
-    if (!wrap) return;
-    if (errorText) wrap.innerHTML = '<div class="case-result" style="color:#ff6b6b">'+errorText+'</div>';
-  }
-
-  function showPlayUI(){
-    overlay.className = "show";
-    ovCard.innerHTML =
-      '<div class="ov-title">Игра</div>' +
-      '<div class="ov-sub">Создай комнату или войди по коду</div>' +
-      '<div class="row" style="margin-bottom:12px">' +
-        '<button class="btn" id="btnHost">Создать комнату</button>' +
-        '<button class="btn ghost" id="btnJoin">Войти по коду</button>' +
-      '</div>' +
-      '<button class="btn ghost" id="btnBack">Назад</button>' +
-      '<div class="status" id="statusText"></div>';
-    document.getElementById("btnBack").onclick = showProfileUI;
-    document.getElementById("btnHost").onclick = function(){
-      var code = genCode();
-      showRoomUI(code);
-      joinGame(code);
-    };
-    document.getElementById("btnJoin").onclick = showJoinUI;
-  }
-
-  function showJoinUI(){
-    overlay.className = "show";
-    ovCard.innerHTML =
-      '<div class="ov-title">Войти по коду</div>' +
-      '<div class="ov-sub">Код из 5 символов</div>' +
-      '<input class="input" id="codeInput" maxlength="5" placeholder="КОД" autocomplete="off">' +
-      '<div class="row"><button class="btn" id="btnGo">Войти</button><button class="btn ghost" id="btnBack">Назад</button></div>' +
-      '<div class="status" id="statusText"></div>';
-    document.getElementById("btnBack").onclick = showPlayUI;
-    var inp = document.getElementById("codeInput");
-    inp.focus();
-    inp.addEventListener("input", function(){ inp.value = inp.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,5); });
-    document.getElementById("btnGo").onclick = function(){
-      var c = (inp.value||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
-      if (c.length !== 5) { setStatus("Код - 5 символов", true); return; }
-      joinGame(c);
-    };
-  }
-
-  function showRoomUI(code){
-    overlay.className = "show";
-    ovCard.innerHTML =
-      '<div class="ov-title">Комната создана</div>' +
-      '<div class="ov-sub">Код для друга:</div>' +
-      '<div class="code-big" id="codeBig">' + code + '</div>' +
-      '<div class="ov-sub">Нажми, чтобы скопировать</div>' +
-      '<div class="status" id="statusText">Подключаемся...</div>';
-    var cb = document.getElementById("codeBig");
-    cb.onclick = function(){
-      try{
-        if (navigator.clipboard) navigator.clipboard.writeText(code);
-        else { var ta=document.createElement("textarea"); ta.value=code; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); }
-        cb.textContent = "Скопировано!";
-        setTimeout(function(){ cb.textContent = code; }, 1200);
-      }catch(e){}
-    };
-  }
-
-  function joinGame(code){
-    roomCode = code;
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "join", room: code, name: myName }));
+  function joinGame(){
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "join", name: myName }));
   }
 
   function showGameOver(score, kills){
@@ -699,10 +794,8 @@
     ovCard.innerHTML =
       '<div class="ov-title dead">Ты врезался</div>' +
       '<div class="ov-sub">Счёт: ' + score + '<br>Убийств: ' + kills + '</div>' +
-      '<div class="row">' +
-        '<button class="btn" id="btnRespawn">Возродиться</button>' +
-        '<button class="btn ghost" id="btnQuit">В профиль</button>' +
-      '</div>';
+      '<button class="btn full" id="btnRespawn">Возродиться</button>' +
+      '<button class="btn ghost full" id="btnQuit">В профиль</button>';
     document.getElementById("btnRespawn").onclick = function(){
       if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "respawn" }));
     };
@@ -712,40 +805,26 @@
     };
   }
 
-  function setStatus(txt, isErr){
+  function setStatus(txt, isErr, isOk){
     var el = document.getElementById("statusText");
     if (!el) return;
     el.textContent = txt || "";
-    el.className = "status" + (isErr ? " err" : "");
+    el.className = "status" + (isErr ? " err" : (isOk ? " ok" : ""));
   }
 
-  function genCode(){
-    var s = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789", out = "";
-    for (var i=0;i<5;i++) out += s[Math.floor(Math.random()*s.length)];
-    return out;
-  }
-
-  var lastStateTime = 0;
-  function loop(now){
+  function loop(nowMs){
     var t = performance.now()/1000;
     if (myWorm && myWorm.alive && pointerActive){
-      targetAngle = Math.atan2(pointerY + camY - myWorm.y, pointerX + camX - myWorm.x);
+      // Используем интерполированную позицию для точности
+      var interp = getInterpolatedMe() || myWorm;
+      var wx = pointerX + camX;
+      var wy = pointerY + camY;
+      targetAngle = Math.atan2(wy - interp.y, wx - interp.x);
     }
     sendInput();
     drawWorld(t);
     requestAnimationFrame(loop);
   }
-
-  // Обновляем историю других при каждом state
-  var _origOnMessage = onMessage;
-  onMessage = function(ev){
-    var msg;
-    try { msg = JSON.parse(ev.data); } catch(e){ return; }
-    if (msg.t === "state" && msg.worms){
-      updateOthersInterp(msg.worms, performance.now());
-    }
-    _origOnMessage(ev);
-  };
 
   resize();
   wsConnect();
