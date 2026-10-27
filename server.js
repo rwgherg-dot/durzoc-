@@ -19,7 +19,6 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocket.Server({ server });
 
-// Один общий мир для всех
 const WORLD_W = 5000, WORLD_H = 5000;
 const TICK_RATE = 30;
 const FOOD_COUNT = 600;
@@ -32,7 +31,6 @@ const FOOD_TYPES = {
   wide:    { points: 2, growLen: 1, growW: 1.5 }
 };
 
-// Скины: pattern описывает узор, а не только цвет
 const SKINS = [
   { id:'classic', name:'Классик', rarity:'common', pattern:'solid',    c1:'#7CFFB2', c2:'#4ecca3' },
   { id:'ember',   name:'Уголёк',  rarity:'common', pattern:'gradient', c1:'#ff6b6b', c2:'#b3001b' },
@@ -70,13 +68,9 @@ function createProfile(name, password, isAdmin) {
   return profiles[name];
 }
 function getProfile(name){ return name ? (profiles[name]||null) : null; }
-
 if (!profiles['admin worms']) createProfile('admin worms', 'admin123', true);
 
-function skinColor(id){
-  const s = SKINS.find(x => x.id === id);
-  return s ? s.c1 : '#7CFFB2';
-}
+function skinColor(id){ const s = SKINS.find(x => x.id === id); return s ? s.c1 : '#7CFFB2'; }
 function skinById(id){ return SKINS.find(x => x.id === id) || SKINS[0]; }
 
 function rollCase(caseId){
@@ -121,9 +115,7 @@ function makeWorm(name, skinId){
   const id = 'w' + (nextWormId++);
   const skin = skinById(skinId);
   const w = {
-    id, name: name || 'Игрок',
-    skin: skin.id,
-    color: skin.c1,
+    id, name: name || 'Игрок', skin: skin.id, color: skin.c1,
     x: rand(200, WORLD_W-200), y: rand(200, WORLD_H-200),
     angle: Math.random()*Math.PI*2, targetAngle: 0,
     baseSpeed: 160, speed: 160, radius: 14, length: 25, gap: 8,
@@ -140,7 +132,7 @@ function normAng(a){ while(a>Math.PI)a-=Math.PI*2; while(a<-Math.PI)a+=Math.PI*2
 function updateWorm(w, dt){
   if (!w.alive) return;
   const diff = normAng(w.targetAngle - w.angle);
-  const maxTurn = 6.5*dt;
+  const maxTurn = 8.0*dt;
   w.angle += Math.max(-maxTurn, Math.min(maxTurn, diff));
   let speed = w.baseSpeed;
   if (w.boosting && w.boostFuel > 0){
