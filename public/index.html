@@ -42,7 +42,6 @@
   .input{width:100%;font-family:inherit;font-size:18px;font-weight:700;text-align:center;background:rgba(255,255,255,.06);border:2px solid rgba(124,255,178,.3);border-radius:14px;padding:14px;color:#fff;margin-bottom:10px;outline:none;min-height:52px}
   .input:focus{border-color:#7CFFB2}
   .row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-  .code-big{font-size:38px;font-weight:900;letter-spacing:6px;color:#7CFFB2;background:rgba(124,255,178,.08);border:2px dashed rgba(124,255,178,.4);border-radius:16px;padding:16px;margin:12px 0;cursor:pointer}
   .status{font-size:13px;color:#8892aa;margin-top:10px;min-height:18px;line-height:1.4}
   .status.err{color:#ff6b6b}
   .status.ok{color:#7CFFB2}
@@ -138,7 +137,7 @@
   var dead=false, profile=null;
   var skinCache = {};
 
-  var renderDelay = 0.04;
+  var renderDelay = 0.03;
   var meHistory = [];
   var othersPrev = {}, othersCurr = {}, othersLastTime = 0, othersNextTime = 0;
   var lastInputSend = 0, lastSentAngle = 0;
@@ -258,17 +257,11 @@
   function getInterpolatedMe(){
     if (!meHistory.length) return null;
     var last = meHistory[meHistory.length-1].data;
-    var dtSince = performance.now()/1000 - meHistory[meHistory.length-1].t;
-    if (dtSince > 0.2) dtSince = 0.2;
-    var speed = last.boosting ? 300 : 160;
-    var ex = last.x + Math.cos(targetAngle) * speed * dtSince;
-    var ey = last.y + Math.sin(targetAngle) * speed * dtSince;
-    if (!last.alive){ ex = last.x; ey = last.y; }
     return {
       id: last.id, skin: last.skin, color: last.color, alive: last.alive,
       angle: targetAngle, score: last.score, kills: last.kills,
       boostFuel: last.boostFuel, radius: last.radius,
-      x: ex, y: ey, segments: last.segments
+      x: last.x, y: last.y, segments: last.segments
     };
   }
 
@@ -353,6 +346,19 @@
     }
   }
 
+  function tracePath(path){
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    if (path.length === 2){ ctx.lineTo(path[1].x, path[1].y); return; }
+    for (var j=1;j<path.length-1;j++){
+      var mx = (path[j].x + path[j+1].x) / 2;
+      var my = (path[j].y + path[j+1].y) / 2;
+      ctx.quadraticCurveTo(path[j].x, path[j].y, mx, my);
+    }
+    var last = path[path.length-1];
+    ctx.lineTo(last.x, last.y);
+  }
+
   function drawWormBody(w, isMe){
     if (!w.alive || !w.segments || w.segments.length < 2) return;
     var segs = w.segments;
@@ -366,9 +372,7 @@
     ctx.shadowBlur = isMe ? 22 : 14;
     ctx.strokeStyle = skin.c1;
     ctx.lineWidth = radius*2;
-    ctx.beginPath();
-    ctx.moveTo(path[0].x, path[0].y);
-    for (var j=1;j<path.length;j++) ctx.lineTo(path[j].x, path[j].y);
+    tracePath(path);
     ctx.stroke();
     ctx.shadowBlur = 0;
 
@@ -376,32 +380,20 @@
       var g = ctx.createLinearGradient(path[path.length-1].x, path[path.length-1].y, path[0].x, path[0].y);
       g.addColorStop(0, skin.c2); g.addColorStop(1, skin.c1);
       ctx.strokeStyle = g; ctx.lineWidth = radius*1.9;
-      ctx.beginPath();
-      ctx.moveTo(path[0].x, path[0].y);
-      for (var jj=1;jj<path.length;jj++) ctx.lineTo(path[jj].x, path[jj].y);
-      ctx.stroke();
+      tracePath(path); ctx.stroke();
     } else if (skin.pattern === 'stripes'){
       ctx.strokeStyle = skin.c2; ctx.lineWidth = radius*1.9;
       ctx.setLineDash([radius*0.9, radius*0.9]);
-      ctx.beginPath();
-      ctx.moveTo(path[0].x, path[0].y);
-      for (var j2=1;j2<path.length;j2++) ctx.lineTo(path[j2].x, path[j2].y);
-      ctx.stroke(); ctx.setLineDash([]);
+      tracePath(path); ctx.stroke(); ctx.setLineDash([]);
     } else if (skin.pattern === 'dots'){
       ctx.strokeStyle = skin.c2; ctx.lineWidth = radius*1.9;
       ctx.setLineDash([radius*0.3, radius*1.2]);
-      ctx.beginPath();
-      ctx.moveTo(path[0].x, path[0].y);
-      for (var j3=1;j3<path.length;j3++) ctx.lineTo(path[j3].x, path[j3].y);
-      ctx.stroke(); ctx.setLineDash([]);
+      tracePath(path); ctx.stroke(); ctx.setLineDash([]);
     }
 
     ctx.strokeStyle = "rgba(255,255,255,0.22)";
     ctx.lineWidth = radius*0.7;
-    ctx.beginPath();
-    ctx.moveTo(path[0].x, path[0].y);
-    for (var j4=1;j4<path.length;j4++) ctx.lineTo(path[j4].x, path[j4].y);
-    ctx.stroke();
+    tracePath(path); ctx.stroke();
 
     var hx = path[0].x, hy = path[0].y;
     var angle = isMe ? targetAngle : (w.angle || 0);
@@ -426,8 +418,8 @@
     if (interpMe && interpMe.alive){
       var tcx = interpMe.x - viewW/2;
       var tcy = interpMe.y - viewH/2;
-      camX += (tcx - camX) * 0.35;
-      camY += (tcy - camY) * 0.35;
+      camX += (tcx - camX) * 0.22;
+      camY += (tcy - camY) * 0.22;
     }
     camX = Math.max(0, Math.min(WORLD_W-viewW, camX));
     camY = Math.max(0, Math.min(WORLD_H-viewH, camY));
@@ -482,7 +474,6 @@
       ctx.fillText(w2.name + " - " + w2.score, px, py - w2.radius - 10);
     }
 
-    // Ник над своим червяком
     if (interpMe && interpMe.alive){
       var mpx = interpMe.x - camX;
       var mpy = interpMe.y - camY;
@@ -779,7 +770,6 @@
       var wy = pointerY + camY;
       targetAngle = Math.atan2(wy - interp.y, wx - interp.x);
     }
-    // Пинг
     var nowPing = performance.now();
     if (nowPing - lastPingSend > 1000 && ws && ws.readyState === 1){
       lastPingSend = nowPing;
