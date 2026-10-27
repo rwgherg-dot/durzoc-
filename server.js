@@ -49,28 +49,38 @@ const SKINS = [
 ];
 
 const CASES = [
-  { id: 'common',    name: 'Обычный кейс',      price: 100,  chances: { common: 0.70, rare: 0.25, epic: 0.045, legendary: 0.005 } },
-  { id: 'rare',      name: 'Редкий кейс',       price: 300,  chances: { common: 0.30, rare: 0.50, epic: 0.18,  legendary: 0.02  } },
-  { id: 'legendary', name: 'Легендарный кейс',  price: 1000, chances: { common: 0.00, rare: 0.20, epic: 0.55,  legendary: 0.25  } }
+  { id: 'common',    name: 'Обычный кейс',     price: 100,  chances: { common: 0.70, rare: 0.25, epic: 0.045, legendary: 0.005 } },
+  { id: 'rare',      name: 'Редкий кейс',      price: 300,  chances: { common: 0.30, rare: 0.50, epic: 0.18,  legendary: 0.02  } },
+  { id: 'legendary', name: 'Легендарный кейс', price: 1000, chances: { common: 0.00, rare: 0.20, epic: 0.55,  legendary: 0.25  } }
 ];
 
+// Профили: имя -> данные. Храним в памяти (при рестарте Render сбрасываются).
 const profiles = {};
 
 function getProfile(name) {
   if (!name) return null;
-  if (!profiles[name]) {
-    const isAdmin = name.toLowerCase() === 'admin worms';
-    profiles[name] = {
-      name,
-      coins: isAdmin ? 999999 : 500,
-      skins: isAdmin ? SKINS.map(s => s.id) : ['classic'],
-      activeSkin: 'classic',
-      isAdmin,
-      kills: 0,
-      deaths: 0
-    };
-  }
+  return profiles[name] || null;
+}
+
+function createProfile(name, password, isAdmin) {
+  if (profiles[name]) return null;
+  profiles[name] = {
+    name,
+    password: password || '',
+    coins: isAdmin ? 999999 : 500,
+    skins: isAdmin ? SKINS.map(s => s.id) : ['classic'],
+    activeSkin: 'classic',
+    isAdmin: !!isAdmin,
+    kills: 0,
+    deaths: 0,
+    registeredAt: Date.now()
+  };
   return profiles[name];
+}
+
+// Создаём админа сразу при старте, чтобы им можно было войти
+if (!profiles['admin worms']) {
+  createProfile('admin worms', 'admin123', true);
 }
 
 function skinColor(id) {
@@ -160,7 +170,6 @@ function updateWorm(w, dt) {
   const diff = normAng(w.targetAngle - w.angle);
   const maxTurn = 6.0 * dt;
   w.angle += Math.max(-maxTurn, Math.min(maxTurn, diff));
-
   let speed = w.baseSpeed;
   if (w.boosting && w.boostFuel > 0) {
     speed *= 1.9;
@@ -170,15 +179,12 @@ function updateWorm(w, dt) {
     w.boostFuel = Math.min(100, w.boostFuel + 15 * dt);
   }
   w.speed = speed;
-
   w.x += Math.cos(w.angle) * speed * dt;
   w.y += Math.sin(w.angle) * speed * dt;
-
   if (w.x < w.radius) { w.x = w.radius; w.angle = Math.PI - w.angle; w.targetAngle = w.angle; }
   if (w.x > WORLD_W - w.radius) { w.x = WORLD_W - w.radius; w.angle = Math.PI - w.angle; w.targetAngle = w.angle; }
   if (w.y < w.radius) { w.y = w.radius; w.angle = -w.angle; w.targetAngle = w.angle; }
   if (w.y > WORLD_H - w.radius) { w.y = WORLD_H - w.radius; w.angle = -w.angle; w.targetAngle = w.angle; }
-
   w.segments.unshift({ x: w.x, y: w.y });
   const targetLen = Math.floor(w.length);
   while (w.segments.length > targetLen) w.segments.pop();
@@ -241,24 +247,67 @@ function checkCollisions() {
   }
 }
 
+function sendProfile(ws, name) {
+  const prof = getProfile(name);
+  if (!prof) return;
+  ws.send(JSON.stringify({
+    t: 'profile',
+    name: prof.name, coins: prof.coins, skins: prof.skins,
+    activeSkin: prof.activeSkin, isAdmin: prof.isAdmin,
+    kills: prof.kills, deaths: prof.deaths,
+    allSkins: SKINS, cases: CASES
+  }));
+}
+
+// Список всех зарегистрированных игроков для таблицы очков
+function leaderboard() {
+  const arr = [];
+  for (const name in profiles) {
+    const p = profiles[name];
+    arr.push({ name: p.name, kills: p.kills, deaths: p.deaths, coins: p.coins, isAdmin: p.isAdmin });
+  }
+  arr.sort((a, b) => b.kills - a.kills);
+  return arr.slice(0, 20);
+}
+
 const clients = new Map();
 
 wss.on('connection', (ws) => {
+  // Каждому новому клиенту сразу шлём таблицу
+  try { ws.send(JSON.stringify({ t: 'leaderboard', list: leaderboard() })); } catch (e) {}
+
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch (e) { return; }
     if (!msg || !msg.t) return;
 
+    if (msg.t === 'register') {
+      const name = String(msg.name || '').trim().slice(0, 16);
+      const pass = String(msg.password || '').slice(0, 40);
+      if (name.length < 2){ ws.send(JSON.stringify({ t:'authError', message:'Имя от 2 символов' })); return; }
+      if (pass.length < 4){ ws.send(JSON.stringify({ t:'authError', message:'Пароль от 4 символов' })); return; }
+      if (profiles[name]){ ws.send(JSON.stringify({ t:'authError', message:'Имя уже занято' })); return; }
+      const isAdmin = false;
+      createProfile(name, pass, isAdmin);
+      ws.send(JSON.stringify({ t: 'authOk', name: name }));
+      sendProfile(ws, name);
+      broadcastLeaderboard();
+      return;
+    }
+
+    if (msg.t === 'login') {
+      const name = String(msg.name || '').trim().slice(0, 16);
+      const pass = String(msg.password || '').slice(0, 40);
+      const prof = getProfile(name);
+      if (!prof){ ws.send(JSON.stringify({ t:'authError', message:'Игрок не найден' })); return; }
+      if (prof.password !== pass){ ws.send(JSON.stringify({ t:'authError', message:'Неверный пароль' })); return; }
+      ws.send(JSON.stringify({ t: 'authOk', name: name }));
+      sendProfile(ws, name);
+      return;
+    }
+
     if (msg.t === 'profile') {
-      const prof = getProfile(String(msg.name || '').slice(0, 16));
-      if (!prof) return;
-      ws.send(JSON.stringify({
-        t: 'profile',
-        name: prof.name, coins: prof.coins, skins: prof.skins,
-        activeSkin: prof.activeSkin, isAdmin: prof.isAdmin,
-        kills: prof.kills, deaths: prof.deaths,
-        allSkins: SKINS, cases: CASES
-      }));
+      sendProfile(ws, String(msg.name || '').slice(0, 16));
       return;
     }
 
@@ -281,10 +330,7 @@ wss.on('connection', (ws) => {
         refund = sk.rarity === 'legendary' ? 500 : sk.rarity === 'epic' ? 200 : 50;
         prof.coins += refund;
       }
-      ws.send(JSON.stringify({
-        t: 'caseResult', skinId, alreadyOwned, refund,
-        coins: prof.coins, skins: prof.skins
-      }));
+      ws.send(JSON.stringify({ t: 'caseResult', skinId, alreadyOwned, refund, coins: prof.coins, skins: prof.skins }));
       return;
     }
 
@@ -302,7 +348,8 @@ wss.on('connection', (ws) => {
       const roomCode = String(msg.room || 'default').toUpperCase().slice(0, 6);
       const name = String(msg.name || 'Игрок').slice(0, 16);
       const prof = getProfile(name);
-      const skinId = prof ? prof.activeSkin : 'classic';
+      if (!prof){ ws.send(JSON.stringify({ t:'error', message:'Сначала войдите' })); return; }
+      const skinId = prof.activeSkin;
       const w = makeWorm(name, skinColor(skinId));
       w.skin = skinId;
       w.room = roomCode;
@@ -311,6 +358,7 @@ wss.on('connection', (ws) => {
       if (!rooms[roomCode]) rooms[roomCode] = new Set();
       rooms[roomCode].add(w.id);
       ws.send(JSON.stringify({ t: 'joined', id: w.id, room: roomCode, world: { w: WORLD_W, h: WORLD_H } }));
+      broadcastLeaderboard();
       return;
     }
 
@@ -342,6 +390,7 @@ wss.on('connection', (ws) => {
         rooms[old.room].add(w.id);
       }
       ws.send(JSON.stringify({ t: 'respawned', id: w.id }));
+      broadcastLeaderboard();
       return;
     }
   });
@@ -353,8 +402,16 @@ wss.on('connection', (ws) => {
       if (rooms[c.roomCode]) rooms[c.roomCode].delete(c.wormId);
     }
     clients.delete(ws);
+    broadcastLeaderboard();
   });
 });
+
+function broadcastLeaderboard(){
+  const payload = JSON.stringify({ t: 'leaderboard', list: leaderboard() });
+  clients.forEach((c, ws) => {
+    if (ws.readyState === WebSocket.OPEN) { try { ws.send(payload); } catch(e){} }
+  });
+}
 
 let lastTick = Date.now();
 setInterval(() => {
